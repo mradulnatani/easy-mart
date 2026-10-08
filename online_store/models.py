@@ -9,8 +9,8 @@ class Stock(models.Model):
     availability = models.BooleanField(default=False)
     capacity = models.CharField(max_length=80)
     company_name = models.CharField(max_length=100)
-    available_stock_count = models.IntegerField()
-    store = models.ForeignKey('StoreDetails', to_field='store_id', on_delete=models.CASCADE)
+    available_stock_count = models.IntegerField(default=0)
+    store = models.ForeignKey('StoreDetails', to_field='store_id', on_delete=models.CASCADE, default='Parag Traders')
 
 
 class CustomUSer(AbstractUser):
@@ -47,7 +47,7 @@ class CustomUSer(AbstractUser):
 
 class StoreDetails(models.Model):
     store_name = models.CharField(max_length=100)
-    store_id = models.UUIDField(default=uuid.uuid4,editable=False)
+    store_id = models.UUIDField(default=uuid.uuid4,editable=False,unique=True)
     store_address = models.CharField(max_length=200)
     pin_code = models.IntegerField()
     owner_name = models.ForeignKey('CustomUSer',on_delete=models.CASCADE,limit_choices_to={'role':'STORE_MANAGER'})

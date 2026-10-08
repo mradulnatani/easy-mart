@@ -43,6 +43,9 @@ INSTALLED_APPS = [
     'adrf',
 ]
 
+
+AUTH_USER_MODEL = 'online_store.CustomUser'
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
