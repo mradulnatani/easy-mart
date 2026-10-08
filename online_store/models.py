@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, Group
+from django.core.validators import MaxValueValidator, MinValueValidator
 import uuid
 
 class Stock(models.Model):
@@ -10,10 +11,10 @@ class Stock(models.Model):
     capacity = models.CharField(max_length=80)
     company_name = models.CharField(max_length=100)
     available_stock_count = models.IntegerField(default=0)
-    store = models.ForeignKey('StoreDetails', to_field='store_id', on_delete=models.CASCADE, default='Parag Traders')
+    store = models.ForeignKey('StoreDetails', on_delete=models.CASCADE)
 
 
-class CustomUSer(AbstractUser):
+class CustomUser(AbstractUser):
     class Roles(models.TextChoices):
         STORE_MANAGER = 'STORE_MANAGER', 'Store Manager'
         CUSTOMER = 'CUSTOMER', 'Customer'
@@ -27,6 +28,8 @@ class CustomUSer(AbstractUser):
 
     def save(self, *args, **kwargs):
         is_new = self.pk is None
+        super().save(*args, **kwargs)
+
         if is_new:
             if self.role == self.Roles.STORE_MANAGER:
                 group, _ = Group.objects.get_or_create(name='Store Manager')
@@ -111,3 +114,35 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"{self.quantity} x {self.product.product_name} (Order: {self.order.id})"
+    
+
+
+class ProductReview(models.Model):
+    product = models.ForeignKey(Stock, on_delete=models.CASCADE,related_name='product_review')
+    customer = models.ForeignKey(CustomUser,on_delete=models.CASCADE,related_name='product_review_customer')
+    rating = models.IntegerField( validators=[MinValueValidator(1), MaxValueValidator(5)])
+    comment = models.TextField(max_length=200)
+    created_at = models.TimeField(auto_now_add=True)
+
+
+
+class ProductAudit(models.Model):
+     class ReasonClass(models.TextChoices):         
+        STOCK_RESTOCK = 'STOCK_RESTOCK', 'Stock_Restock'
+        DISCREPANCY_CORRECTION = 'DISCREPANCY_CORRECTION', 'Discrepancy_Correction'
+        DAMAGED_GOODS = 'DAMAGED_GOODS', 'Damaged_goods'
+
+     product = models.ForeignKey(Stock,on_delete=models.CASCADE, related_name='audited_product')
+     changed_by = models.ForeignKey(CustomUser,on_delete=models.CASCADE,related_name='changed_by_user')
+     tracking_number = models.ForeignKey(Order,to_field='order_id',on_delete=models.CASCADE,related_name='order_tracking_number')
+     status = models.ForeignKey(Order,on_delete=models.CASCADE,related_name='order_status')
+     old_quantity = models.IntegerField()
+     new_quantity = models.IntegerField()
+     timestamp = models.TimeField(auto_now=True)
+     reason = models.CharField(choices=ReasonClass.choices,default=ReasonClass.STOCK_RESTOCK)
+
+
+# will include the payment related models later
+
+class Paymentdetails(models.Model):
+    pass
