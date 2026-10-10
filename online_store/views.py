@@ -6,8 +6,8 @@ from rest_framework.decorators import api_view
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework import status, generics
-from .models import Stock
-from .serializer import StockSerializer,CSVUploadSerializer,UserRegistrationSerializer, UserLoginSerializer, UserDetailSerializer
+from .models import Stock,StoreDetails
+from .serializer import StockSerializer,CSVUploadSerializer,UserRegistrationSerializer, UserLoginSerializer, UserDetailSerializer, StoreRegistrationSerializer
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -132,3 +132,12 @@ class LogoutAPIView(APIView):
             return Response({'detail': 'Successfully logged out'}, status=status.HTTP_200_OK)
         except Exception:
             return Response({'error': 'Invalid or missing refresh token.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+class StoreRegistrationView(generics.CreateAPIView):
+    queryset = StoreDetails.objects.all()
+    serializer_class = StoreRegistrationSerializer
+    permission_classes = [IsAuthenticated]  
+
+    def perform_create(self, serializer):
+        serializer.save(owner_name=self.request.user)

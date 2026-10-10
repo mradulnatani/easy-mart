@@ -1,6 +1,7 @@
 from rest_framework import serializers
-from .models import Stock
+from .models import Stock,StoreDetails
 from django.contrib.auth import get_user_model
+import uuid
 
 
 User = get_user_model()
@@ -9,7 +10,7 @@ User = get_user_model()
 class StockSerializer(serializers.ModelSerializer):
     class Meta:
         model = Stock
-        fields = {'product_name','category','price','availability','capacity','company_name','available_stock_count'}
+        fields = ['product_name','category','price','availability','capacity','company_name','available_stock_count']
 
 class CSVUploadSerializer(serializers.Serializer):
     file = serializers.FileField()
@@ -82,6 +83,22 @@ class UserDetailSerializer(serializers.ModelSerializer):
      ]
 
         
+
+class StoreRegistrationSerializer(serializers.ModelSerializer):
+    owner_name = serializers.PrimaryKeyRelatedField(
+        queryset = User.objects.filter(role='STORE_MANAGER'),
+        help_text='select user with the role of Store Manager'
+    )
+    
+    class Meta:
+        model = StoreDetails
+        fields = ['store_id', 'store_name', 'store_address', 'pin_code', 'owner_name']
+        read_only_fields = ['store_id','owner_name'] 
+
+    def validate_pin_code(self, value):
+        if len(str(value)) < 5 or len(str(value)) > 6:
+            raise serializers.ValidationError("Please enter a valid 5 or 6 digit pin code.")
+        return value
 
 
 
