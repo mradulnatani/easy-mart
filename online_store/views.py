@@ -5,10 +5,18 @@ from rest_framework.views import APIView
 from rest_framework.decorators import api_view
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, generics
 from .models import Stock
-from .serializer import StockSerializer,CSVUploadSerializer
+from .serializer import StockSerializer,CSVUploadSerializer,UserRegistrationSerializer, UserLoginSerializer, UserDetailSerializer
 from django.shortcuts import get_object_or_404
+from django.contrib.auth import authenticate
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.permissions import IsAuthenticated
+from django.contrib.auth import get_user_model
+
+
+
+User = get_user_model()
 
 class EnterStockViaCSVView(APIView):
     parser_classes = (MultiPartParser, FormParser)
@@ -62,3 +70,65 @@ def editstock(request,pk):
             serializer.save()
             return Response(serializer.data,status=status.HTTP_200_OK)
         return Response(serializer.errors,status=status.HTTP_400_BAD_REQUEST)
+    
+
+
+
+class RegisterAPIView(generics.CreateAPIView):
+    serializer_class = UserRegistrationSerializer
+    def create(self, request, *args, **kwargs):
+        response = super().create(request,*args,**kwargs)
+        return Response({
+            "message": "Registration successful. You can login now",
+            "user": response.data
+        }, status = status.HTTP_201_CREATED)
+    
+class LoginAPIView(generics.GenericAPIView):
+    serializer_class = UserLoginSerializer
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        username = serializer.validated_data['username']
+        password = serializer.validated_data['password']
+
+        user = authenticate(username=username, password=password)
+        if user:
+            # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+                'user_id': user.id,
+                'username': user.username,
+                # Include custom role properties so the frontend knows what UI to render
+                'role': user.role,
+                'is_store_manager': user.is_store_manager,
+                'is_customer': user.is_customer
+            }, status=status.HTTP_200_OK)
+
+        return Response({'error': 'Invalid credentials.'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ProfileAPIView(generics.RetrieveUpdateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserDetailSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+
+
+class LogoutAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        # In JWT, true logout is done by blacklisting the refresh token.
+        # Ensure 'rest_framework_simplejwt.token_blacklist' is in INSTALLED_APPS
+        try:
+            refresh_token = request.data["refresh"]
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            return Response({'detail': 'Successfully logged out'}, status=status.HTTP_200_OK)
+        except Exception:
+            return Response({'error': 'Invalid or missing refresh token.'}, status=status.HTTP_400_BAD_REQUEST)
