@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 from datetime import timedelta
 import os
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
@@ -46,9 +47,29 @@ SECRET_KEY = os.getenv('SECRET_KEY') or (
 if not SECRET_KEY:
     raise ImproperlyConfigured('SECRET_KEY environment variable must be set when DEBUG is False.')
 
-ALLOWED_HOSTS = _env_list(
-    'ALLOWED_HOSTS',
-    ['localhost', '127.0.0.1'] if DEBUG else [],
+_VERCEL_HOSTS = [
+    host.strip()
+    for host in (
+        os.getenv('VERCEL_URL', ''),
+        os.getenv('VERCEL_BRANCH_URL', ''),
+        os.getenv('VERCEL_PROJECT_PRODUCTION_URL', ''),
+        'easy-mart-beta.vercel.app',
+        '.vercel.app',
+    )
+    if host and host.strip()
+]
+
+_DEFAULT_ALLOWED_HOSTS = (
+    ['localhost', '127.0.0.1', *_VERCEL_HOSTS]
+    if (DEBUG or os.getenv('VERCEL'))
+    else _VERCEL_HOSTS
+)
+
+ALLOWED_HOSTS = list(
+    dict.fromkeys(
+        _env_list('ALLOWED_HOSTS', _DEFAULT_ALLOWED_HOSTS)
+        + (_VERCEL_HOSTS if os.getenv('VERCEL') else [])
+    )
 )
 
 
@@ -94,14 +115,24 @@ REST_FRAMEWORK = {
 }
 
 
-CORS_ALLOWED_ORIGINS = _env_list(
-    'CORS_ALLOWED_ORIGINS',
-    ['http://localhost:3000', 'http://127.0.0.1:8000', 'http://localhost:8000','easy-mart-beta.vercel.app'],
-)
-CSRF_TRUSTED_ORIGINS = _env_list(
-    'CSRF_TRUSTED_ORIGINS',
-    ['http://127.0.0.1:8000', 'http://localhost:8000'],
-)
+_VERCEL_ORIGINS = [f'https://{h.lstrip(".")}' for h in _VERCEL_HOSTS if not h.startswith('.')]
+_DEFAULT_CORS_ORIGINS = [
+    'http://localhost:3000',
+    'http://127.0.0.1:8000',
+    'http://localhost:8000',
+    'https://easy-mart-beta.vercel.app',
+    *[o for o in _VERCEL_ORIGINS if o != 'https://easy-mart-beta.vercel.app'],
+]
+_DEFAULT_CSRF_ORIGINS = [
+    'http://127.0.0.1:8000',
+    'http://localhost:8000',
+    'https://easy-mart-beta.vercel.app',
+    'https://*.vercel.app',
+    *[o for o in _VERCEL_ORIGINS if o != 'https://easy-mart-beta.vercel.app'],
+]
+
+CORS_ALLOWED_ORIGINS = _env_list('CORS_ALLOWED_ORIGINS', _DEFAULT_CORS_ORIGINS)
+CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(_env_list('CSRF_TRUSTED_ORIGINS', _DEFAULT_CSRF_ORIGINS)))
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -187,7 +218,9 @@ WSGI_APPLICATION = 'easy_mart.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
-DB_ENGINE = os.getenv('DB_ENGINE', 'django.db.backends.postgresql')
+DB_ENGINE = os.getenv('DB_ENGINE', '').strip()
+DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
+
 if DB_ENGINE == 'django.db.backends.sqlite3':
     DATABASES = {
         'default': {
@@ -195,10 +228,27 @@ if DB_ENGINE == 'django.db.backends.sqlite3':
             'NAME': BASE_DIR / os.getenv('SQLITE_NAME', 'db.sqlite3'),
         }
     }
+elif DATABASE_URL and DATABASE_URL.startswith(('postgres://', 'postgresql://')):
+    _parsed = urlparse(DATABASE_URL)
+    _query = parse_qs(_parsed.query)
+    _options = {k: v[0] for k, v in _query.items() if v}
+    DATABASES = {
+        'default': {
+            'ENGINE': DB_ENGINE or 'django.db.backends.postgresql',
+            'NAME': _parsed.path.lstrip('/') or os.getenv('DB_NAME', 'easy_mart'),
+            'USER': _parsed.username or os.getenv('DB_USER', 'postgres'),
+            'PASSWORD': _parsed.password or os.getenv('DB_PASSWORD', ''),
+            'HOST': _parsed.hostname or os.getenv('DB_HOST', 'localhost'),
+            'PORT': str(_parsed.port or os.getenv('DB_PORT', '5432')),
+            'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '60')),
+            'CONN_HEALTH_CHECKS': True,
+            **({'OPTIONS': _options} if _options else {}),
+        }
+    }
 else:
     DATABASES = {
         'default': {
-            'ENGINE': DB_ENGINE,
+            'ENGINE': DB_ENGINE or 'django.db.backends.postgresql',
             'NAME': os.getenv('DB_NAME', 'easy_mart'),
             'USER': os.getenv('DB_USER', 'postgres'),
             'PASSWORD': os.getenv('DB_PASSWORD', ''),
@@ -253,6 +303,7 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
@@ -264,7 +315,9 @@ JWT_COOKIE_SAMESITE = 'Lax'
 
 LOGIN_URL = '/store/login/'
 
-# Upload & HTTP Security Hardening
+# Upload & HTTP Security Hardening (including reverse proxy SSL termination e.g. Vercel)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 DATA_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024
 SECURE_CONTENT_TYPE_NOSNIFF = True
