@@ -36,6 +36,21 @@
     </div>
 </div>
 
+{% if unread_notifications %}
+<div class="card" style="margin-bottom: 1.25rem; border-left: 4px solid #2563eb;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+        <h2 style="margin: 0;">Recent Action Alerts</h2>
+        <a class="btn btn-secondary btn-sm" href="{% url 'notifications_page' %}">All Alerts ({{ unread_notification_count }})</a>
+    </div>
+    {% for n in unread_notifications %}
+        <div style="padding: 0.45rem 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap;">
+            <span><strong>{{ n.title }}</strong> &mdash; {{ n.message }}</span>
+            {% if n.link %}<a class="btn btn-primary btn-sm" href="{{ n.link }}">Open</a>{% endif %}
+        </div>
+    {% endfor %}
+</div>
+{% endif %}
+
 <div class="grid grid-2">
     <div class="card">
         <h2>Recent Retailer Orders</h2>

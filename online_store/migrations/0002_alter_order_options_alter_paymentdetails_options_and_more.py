@@ -322,15 +322,25 @@ class Migration(migrations.Migration):
             name='reason',
             field=models.CharField(choices=[('STOCK_RESTOCK', 'Stock Restock'), ('ORDER_DEDUCTION', 'Order Deduction'), ('ORDER_CANCEL_RESTORE', 'Order Cancel Restore'), ('DISCREPANCY_CORRECTION', 'Discrepancy Correction'), ('DAMAGED_GOODS', 'Damaged Goods')], default='STOCK_RESTOCK', max_length=40),
         ),
-        migrations.AlterField(
+        migrations.RemoveField(
             model_name='productaudit',
             name='timestamp',
-            field=models.DateTimeField(auto_now_add=True),
         ),
-        migrations.AlterField(
+        migrations.AddField(
+            model_name='productaudit',
+            name='timestamp',
+            field=models.DateTimeField(auto_now_add=True, default=django.utils.timezone.now),
+            preserve_default=False,
+        ),
+        migrations.RemoveField(
             model_name='productreview',
             name='created_at',
-            field=models.DateTimeField(auto_now_add=True),
+        ),
+        migrations.AddField(
+            model_name='productreview',
+            name='created_at',
+            field=models.DateTimeField(auto_now_add=True, default=django.utils.timezone.now),
+            preserve_default=False,
         ),
         migrations.AlterField(
             model_name='stock',

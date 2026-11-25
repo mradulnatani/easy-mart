@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
@@ -44,7 +46,13 @@ class StockSerializer(serializers.ModelSerializer):
             'store_uuid',
             'updated_at',
         ]
-        read_only_fields = ['id', 'availability', 'store_name', 'store_uuid', 'is_low_stock', 'updated_at']
+        read_only_fields = ['id', 'store', 'availability', 'store_name', 'store_uuid', 'is_low_stock', 'updated_at']
+        extra_kwargs = {
+            'price': {'min_value': Decimal('0.00')},
+            'gst_rate': {'min_value': Decimal('0.00')},
+            'min_order_quantity': {'min_value': 1},
+            'available_stock_count': {'min_value': 0},
+        }
 
 
 class CSVUploadSerializer(serializers.Serializer):

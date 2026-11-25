@@ -1,9 +1,18 @@
 from decimal import Decimal
+import os
 import uuid
 
 from django.contrib.auth.models import AbstractUser, Group
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator
 from django.db import models
+from django.db.models import Q
+
+
+def payment_proof_upload_path(instance, filename):
+    """Store payment proofs with randomized UUID filenames to prevent path traversal/collisions."""
+    _, ext = os.path.splitext(filename or '')
+    safe_ext = ext.lower() if ext.lower() in ('.jpg', '.jpeg', '.png', '.webp', '.pdf') else '.bin'
+    return f'payment_proofs/{uuid.uuid4().hex}{safe_ext}'
 
 
 class CustomUser(AbstractUser):
@@ -128,6 +137,17 @@ class Stock(models.Model):
 
     class Meta:
         ordering = ['product_name', 'id']
+        indexes = [
+            models.Index(fields=['store', 'category'], name='stock_store_cat_idx'),
+            models.Index(fields=['sku'], name='stock_sku_idx'),
+            models.Index(fields=['available_stock_count'], name='stock_avail_qty_idx'),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=Q(price__gte=0), name='stock_price_non_neg'),
+            models.CheckConstraint(condition=Q(gst_rate__gte=0), name='stock_gst_non_neg'),
+            models.CheckConstraint(condition=Q(min_order_quantity__gte=1), name='stock_moq_pos'),
+            models.CheckConstraint(condition=Q(available_stock_count__gte=0), name='stock_qty_non_neg'),
+        ]
 
     def save(self, *args, **kwargs):
         if not self.sku:
@@ -170,6 +190,9 @@ class CartItem(models.Model):
 
     class Meta:
         unique_together = ('cart', 'product')
+        constraints = [
+            models.CheckConstraint(condition=Q(quantity__gte=1), name='cartitem_qty_pos'),
+        ]
 
     @property
     def line_total(self):
@@ -239,6 +262,16 @@ class Order(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['customer', 'status', '-created_at'], name='order_cust_stat_idx'),
+            models.Index(fields=['store', 'status', '-created_at'], name='order_store_stat_idx'),
+            models.Index(fields=['is_credit_order', 'payment_status'], name='order_cred_pay_idx'),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=Q(total_price__gte=0), name='order_total_non_neg'),
+            models.CheckConstraint(condition=Q(delivery_fee__gte=0), name='order_deliv_non_neg'),
+            models.CheckConstraint(condition=Q(amount_paid__gte=0), name='order_paid_non_neg'),
+        ]
 
     @property
     def grand_total(self):
@@ -291,6 +324,11 @@ class OrderItem(models.Model):
     quantity = models.PositiveIntegerField(default=1)
     fulfilled_quantity = models.PositiveIntegerField(default=0)
     price_at_purchase = models.DecimalField(max_digits=12, decimal_places=2)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=Q(quantity__gte=1), name='orderitem_qty_pos'),
+        ]
 
     @property
     def line_total(self):
@@ -380,6 +418,9 @@ class ProductAudit(models.Model):
 
     class Meta:
         ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['product', '-timestamp'], name='audit_prod_ts_idx'),
+        ]
 
     def __str__(self):
         return f"{self.product.product_name}: {self.old_quantity} -> {self.new_quantity} ({self.reason})"
@@ -408,7 +449,12 @@ class Paymentdetails(models.Model):
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     payment_method = models.CharField(max_length=20, choices=PaymentMethod.choices, default=PaymentMethod.UPI)
     reference_number = models.CharField(max_length=100, blank=True, default='')
-    proof_file = models.FileField(upload_to='payment_proofs/', null=True, blank=True)
+    proof_file = models.FileField(
+        upload_to=payment_proof_upload_path,
+        null=True,
+        blank=True,
+        validators=[FileExtensionValidator(['jpg', 'jpeg', 'png', 'webp', 'pdf'])],
+    )
     status = models.CharField(
         max_length=20,
         choices=VerificationStatus.choices,
@@ -433,6 +479,13 @@ class Paymentdetails(models.Model):
 
     class Meta:
         ordering = ['-payment_date']
+        indexes = [
+            models.Index(fields=['order', 'status'], name='pay_order_stat_idx'),
+            models.Index(fields=['retailer', '-payment_date'], name='pay_retailer_dt_idx'),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=Q(amount__gt=0), name='payment_amount_pos'),
+        ]
 
     def __str__(self):
         return f"Payment {str(self.payment_id)[:8].upper()} - {self.amount} ({self.status})"
@@ -466,6 +519,9 @@ class Notification(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['recipient', 'is_read', '-created_at'], name='notif_recip_read_idx'),
+        ]
 
     def __str__(self):
         return f"{self.recipient.username}: {self.title}"

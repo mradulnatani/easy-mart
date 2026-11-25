@@ -103,6 +103,7 @@ a:hover {
 
 .nav-toggle {
     display: none;
+    position: relative;
     background: #1e293b;
     color: #fff;
     border: 1px solid #334155;
@@ -118,14 +119,15 @@ a:hover {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.65rem;
 }
 
 .nav-links a {
+    position: relative;
     color: #cbd5e1;
     font-size: 0.9rem;
     font-weight: 500;
-    padding: 0.45rem 0.75rem;
+    padding: 0.45rem 0.8rem;
     border-radius: 7px;
     transition: background 0.15s ease, color 0.15s ease;
 }
@@ -146,6 +148,27 @@ a:hover {
 
 .nav-links a.nav-cta:hover {
     background: var(--primary-dark);
+}
+
+.nav-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 19px;
+    height: 19px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #ef4444;
+    border: 2px solid #0f172a;
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
 }
 
 .badge-role {
@@ -930,9 +953,15 @@ input:focus, select:focus, textarea:focus {
     }
 
     .nav-links a {
-        padding: 0.6rem 0.75rem;
+        padding: 0.6rem 2.4rem 0.6rem 0.75rem;
         font-size: 0.96rem;
         margin-left: 0;
+    }
+
+    .nav-links .nav-badge {
+        top: 50%;
+        right: 12px;
+        transform: translateY(-50%);
     }
 
     .badge-role {
@@ -1023,16 +1052,21 @@ input:focus, select:focus, textarea:focus {
     }
 
     .mobile-bottom-nav a {
+        position: relative;
         color: #cbd5e1;
         font-size: 0.72rem;
         font-weight: 600;
         text-align: center;
-        padding: 0.35rem 0.4rem;
+        padding: 0.45rem 0.4rem 0.35rem;
         border-radius: 6px;
         flex: 1;
         white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        overflow: visible;
+    }
+
+    .mobile-bottom-nav .nav-badge {
+        top: -2px;
+        right: 4px;
     }
 
     .mobile-bottom-nav a.active,

@@ -458,12 +458,60 @@ class EasyMartEndToEndTests(TestCase):
         self.assertTrue(Notification.objects.filter(recipient=self.retailer, title__icontains='Organic Jaggery').exists())
         self.assertFalse(Notification.objects.filter(recipient=non_customer).exists())
 
-        # Retailer logs in, confirms delivery (-> COMPLETED), and sees notification
+        # Wholesaler restocks an existing product manually & via CSV -> previous customer gets restock alerts
+        jaggery = Stock.objects.get(store=self.store, product_name='Organic Jaggery')
+        self.client.post(
+            reverse('wholesaler_inventory'),
+            {
+                'action': 'adjust_stock',
+                'product_id': str(jaggery.id),
+                'new_quantity': '60',
+                'reason': ProductAudit.ReasonClass.STOCK_RESTOCK,
+            },
+        )
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.retailer, title__icontains='Restocked at').exists()
+        )
+        self.assertFalse(Notification.objects.filter(recipient=non_customer).exists())
+
+        csv_restock = (
+            f"sku,product_name,category,price,capacity,company_name,available_stock_count\n"
+            f"{self.stock.sku},Refined Sugar,Groceries,2000.00,50kg Bag,SweetCo,99\n"
+        ).encode('utf-8')
+        self.client.post(
+            reverse('wholesaler_inventory'),
+            {
+                'action': 'upload_spreadsheet',
+                'file': SimpleUploadedFile('restock.csv', csv_restock, content_type='text/csv'),
+            },
+        )
+        self.assertTrue(
+            Notification.objects.filter(
+                recipient=self.retailer,
+                title__icontains='Refined Sugar',
+                message__icontains='restocked',
+            ).exists()
+        )
+
+        # Verify navbar counters & bidirectional notifications for both Wholesaler and Retailer
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.wholesaler, title__icontains='New order').exists()
+        )
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.wholesaler, title__icontains='Payment confirmation needed').exists()
+        )
+        w_dash_page = self.client.get(reverse('wholesaler_dashboard'))
+        self.assertContains(w_dash_page, 'Recent Action Alerts')
+        self.assertContains(w_dash_page, 'nav-badge')
+
+        # Retailer logs in, sees dashboard counters & notifications, confirms delivery (-> COMPLETED)
         self.client.get(reverse('logout_page'))
         self.client.post(
             reverse('login_page'),
             {'username': 'retailer1', 'password': 'StrongPassword123!'},
         )
+        r_dash_page = self.client.get(reverse('retailer_dashboard'))
+        self.assertContains(r_dash_page, 'nav-badge')
         notif_page = self.client.get(reverse('notifications_page'))
         self.assertContains(notif_page, 'Organic Jaggery')
 
@@ -475,6 +523,9 @@ class EasyMartEndToEndTests(TestCase):
         self.assertEqual(order.status, Order.OrderStatus.COMPLETED)
         self.assertTrue(order.retailer_confirmed_delivery)
         self.assertIsNotNone(order.retailer_confirmed_at)
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.wholesaler, title__icontains='Delivery confirmed').exists()
+        )
 
         # Credit-based COMPLETED order with unsettled balance:
         # Retailer still sees "Settle Ledger" and Wholesaler still sees "Manage" (for payments only)
@@ -749,3 +800,102 @@ class EasyMartEndToEndTests(TestCase):
         r_cancelled_detail = self.client.get(reverse('retailer_order_detail', kwargs={'order_id': new_order_uuid}))
         self.assertContains(r_cancelled_detail, 'Balance Due: <strong>&#8377;0.00</strong>')
         self.assertContains(r_cancelled_detail, 'No Due')
+
+    def test_security_hardening_and_duplicate_stock_merge(self):
+        # 1. Open redirect protection ignores external ?next= URLs on login
+        login_resp = self.client.post(
+            reverse('login_page') + '?next=https://evil.example/phish',
+            {'username': 'retailer1', 'password': 'StrongPassword123!'},
+        )
+        self.assertEqual(login_resp.status_code, 302)
+        self.assertEqual(login_resp['Location'], reverse('retailer_dashboard'))
+
+        # 2. Unsafe payment proof file extension (.html) is rejected
+        api = APIClient()
+        api.force_authenticate(user=self.retailer)
+        create_resp = api.post(
+            reverse('orders_api'),
+            {
+                'items': [
+                    {'product_id': self.stock.id, 'quantity': 2},
+                    {'product_id': self.stock.id, 'quantity': 2},
+                ],
+                'delivery_city': 'Pune',
+                'delivery_state': 'Maharashtra',
+            },
+            format='json',
+        )
+        self.assertEqual(create_resp.status_code, status.HTTP_201_CREATED)
+        order_pk = create_resp.data[0]['id']
+        order_uuid = create_resp.data[0]['order_id']
+        # Merged duplicate lines cleanly: 20 - 4 = 16
+        self.stock.refresh_from_db()
+        self.assertEqual(self.stock.available_stock_count, 16)
+
+        bad_proof = SimpleUploadedFile('xss.html', b'<script>alert(1)</script>', content_type='text/html')
+        pay_resp = self.client.post(
+            reverse('retailer_order_detail', kwargs={'order_id': order_uuid}),
+            {
+                'action': 'submit_payment',
+                'amount': '100.00',
+                'payment_method': Paymentdetails.PaymentMethod.UPI,
+                'proof_file': bad_proof,
+            },
+            follow=True,
+        )
+        self.assertContains(pay_resp, 'Unsupported proof file type')
+        self.assertEqual(Paymentdetails.objects.filter(order_id=order_pk).count(), 0)
+
+        # 3. Wholesaler cannot reassign product ownership to another store via editstock
+        api.force_authenticate(user=self.wholesaler)
+        edit_resp = api.patch(
+            reverse('edit_stock', kwargs={'pk': self.stock.pk}),
+            {'store': self.other_store.id, 'available_stock_count': 22},
+            format='json',
+        )
+        self.assertEqual(edit_resp.status_code, status.HTTP_200_OK)
+        self.stock.refresh_from_db()
+        self.assertEqual(self.stock.store_id, self.store.id)
+        self.assertEqual(self.stock.available_stock_count, 22)
+
+        # 4. XLSX XML DOCTYPE / ENTITY bomb is rejected
+        evil_xml = (
+            '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe "boom">]>'
+            '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/></worksheet>'
+        )
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w') as zf:
+            zf.writestr('xl/worksheets/sheet1.xml', evil_xml)
+        evil_xlsx = SimpleUploadedFile(
+            'evil.xlsx',
+            buf.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        upload_resp = api.post(
+            reverse('enter_stock_details_via_csv'),
+            {'file': evil_xlsx, 'store_id': str(self.store.store_id)},
+            format='multipart',
+        )
+        self.assertEqual(upload_resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('DOCTYPE', upload_resp.data['error'])
+
+        # 5. CSV export neutralizes formula-injection prefixes
+        Stock.objects.create(
+            store=self.store,
+            sku='FORM-1',
+            product_name='=CMD()',
+            category='General',
+            price=Decimal('100.00'),
+            capacity='1 Unit',
+            company_name='+EvilCo',
+            available_stock_count=5,
+        )
+        self.client.get(reverse('logout_page'))
+        self.client.post(
+            reverse('login_page'),
+            {'username': 'wholesaler1', 'password': 'StrongPassword123!'},
+        )
+        export_resp = self.client.get(reverse('wholesaler_inventory_export'))
+        self.assertEqual(export_resp.status_code, 200)
+        self.assertIn(b"'=CMD()", export_resp.content)
+        self.assertIn(b"'+EvilCo", export_resp.content)

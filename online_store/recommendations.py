@@ -1,7 +1,6 @@
 from collections import defaultdict
-from datetime import timedelta
 
-from django.db.models import F
+from django.db.models import Count, F
 from django.utils import timezone
 
 from .models import Order, OrderItem, Stock
@@ -19,18 +18,18 @@ def get_retailer_recommendations(retailer, limit: int = 6) -> list[dict]:
         Stock.objects.filter(available_stock_count__gte=F('min_order_quantity'))
         .select_related('store')
         .prefetch_related('store__service_areas')
+        .order_by('-updated_at')[:500]
     )
     if not in_stock:
         return []
 
-    stock_by_id = {s.id: s for s in in_stock}
     now = timezone.now()
 
     past_items = list(
         OrderItem.objects.filter(order__customer=retailer)
         .exclude(order__status=Order.OrderStatus.CANCELLED)
         .select_related('product', 'order', 'order__store')
-        .order_by('-order__created_at')
+        .order_by('-order__created_at')[:200]
     )
 
     ordered_counts: dict[int, int] = defaultdict(int)
@@ -53,33 +52,36 @@ def get_retailer_recommendations(retailer, limit: int = 6) -> list[dict]:
 
     # Collaborative filtering: products bought by other retailers who bought the same items
     collab_scores: dict[int, float] = defaultdict(float)
-    collab_source_name: dict[int, str] = {}
     if ordered_counts:
-        peer_customer_ids = (
+        peer_customer_ids = list(
             OrderItem.objects.filter(product_id__in=ordered_counts.keys())
             .exclude(order__customer=retailer)
             .exclude(order__status=Order.OrderStatus.CANCELLED)
             .values_list('order__customer_id', flat=True)
-            .distinct()
+            .distinct()[:50]
         )
-        peer_items = (
-            OrderItem.objects.filter(order__customer_id__in=peer_customer_ids)
-            .exclude(order__status=Order.OrderStatus.CANCELLED)
-            .select_related('product')
-        )
-        for pi in peer_items:
-            if pi.product_id not in ordered_counts:
-                collab_scores[pi.product_id] += 1.0
-                if pi.product_id not in collab_source_name:
-                    collab_source_name[pi.product_id] = pi.product.product_name
+        if peer_customer_ids:
+            peer_counts = (
+                OrderItem.objects.filter(order__customer_id__in=peer_customer_ids)
+                .exclude(order__status=Order.OrderStatus.CANCELLED)
+                .exclude(product_id__in=ordered_counts.keys())
+                .values('product_id')
+                .annotate(cnt=Count('id'))
+                .order_by('-cnt')[:200]
+            )
+            for row in peer_counts:
+                collab_scores[row['product_id']] = float(row['cnt'])
 
-    # Global popularity fallback signal
-    popularity_counts: dict[int, int] = defaultdict(int)
-    for row in (
-        OrderItem.objects.exclude(order__status=Order.OrderStatus.CANCELLED)
-        .values_list('product_id', flat=True)
-    ):
-        popularity_counts[row] += 1
+    # Global popularity fallback signal computed in SQL
+    popularity_counts: dict[int, int] = {
+        row['product_id']: row['cnt']
+        for row in (
+            OrderItem.objects.exclude(order__status=Order.OrderStatus.CANCELLED)
+            .values('product_id')
+            .annotate(cnt=Count('id'))
+            .order_by('-cnt')[:200]
+        )
+    }
 
     retailer_city = (getattr(retailer, 'city', '') or '').strip().lower()
     retailer_state = (getattr(retailer, 'state', '') or '').strip().lower()

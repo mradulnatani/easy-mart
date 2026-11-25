@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
+from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -9,6 +10,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -40,6 +42,7 @@ from .services import (
     create_orders_for_items,
     ensure_default_store_for_wholesaler,
     import_stock_spreadsheet,
+    notify_previous_customers_restock,
     record_payment,
     update_order_status,
     verify_payment,
@@ -113,38 +116,48 @@ def availableproducts(request):
             Q(product_name__icontains=q) | Q(company_name__icontains=q) | Q(sku__icontains=q)
         )
 
-    serializer = StockSerializer(products, many=True)
+    serializer = StockSerializer(products[:200], many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 @api_view(['GET', 'PUT', 'PATCH'])
 @permission_classes([IsWholesaler])
 def editstock(request, pk):
-    product = get_object_or_404(Stock, pk=pk, store__owner=request.user)
     if request.method == 'GET':
+        product = get_object_or_404(Stock, pk=pk, store__owner=request.user)
         return Response(StockSerializer(product).data, status=status.HTTP_200_OK)
 
-    old_qty = product.available_stock_count
     partial = request.method == 'PATCH'
-    serializer = StockSerializer(product, data=request.data, partial=partial)
-    if serializer.is_valid():
+    with transaction.atomic():
+        product = get_object_or_404(Stock.objects.select_for_update(), pk=pk, store__owner=request.user)
+        old_qty = product.available_stock_count
+        serializer = StockSerializer(product, data=request.data, partial=partial)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
         updated = serializer.save()
         if old_qty != updated.available_stock_count:
+            reason = request.data.get('reason', ProductAudit.ReasonClass.DISCREPANCY_CORRECTION)
+            if reason not in ProductAudit.ReasonClass.values:
+                reason = ProductAudit.ReasonClass.DISCREPANCY_CORRECTION
             ProductAudit.objects.create(
                 product=updated,
                 changed_by=request.user,
                 old_quantity=old_qty,
                 new_quantity=updated.available_stock_count,
-                reason=request.data.get('reason', ProductAudit.ReasonClass.DISCREPANCY_CORRECTION),
-                notes=request.data.get('notes', 'API stock edit'),
+                reason=reason,
+                notes=str(request.data.get('notes', 'API stock edit'))[:255],
             )
+            if updated.available_stock_count > old_qty:
+                notify_previous_customers_restock(store=updated.store, products=[updated])
         return Response(StockSerializer(updated).data, status=status.HTTP_200_OK)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class RegisterAPIView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth'
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -164,6 +177,8 @@ class RegisterAPIView(generics.CreateAPIView):
 class LoginAPIView(generics.GenericAPIView):
     serializer_class = UserLoginSerializer
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth'
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
@@ -270,7 +285,7 @@ class OrderListCreateAPIView(APIView):
             orders = Order.objects.filter(store__owner=request.user)
         else:
             orders = Order.objects.filter(customer=request.user)
-        orders = orders.select_related('store', 'customer', 'shipment').prefetch_related('items__product', 'status_logs')
+        orders = orders.select_related('store', 'customer', 'shipment').prefetch_related('items__product', 'status_logs')[:200]
         return Response(OrderSerializer(orders, many=True).data)
 
     def post(self, request):
@@ -371,7 +386,7 @@ class PaymentListCreateAPIView(APIView):
             qs = Paymentdetails.objects.filter(order__store__owner=request.user)
         else:
             qs = Paymentdetails.objects.filter(retailer=request.user)
-        return Response(PaymentSerializer(qs.select_related('order', 'retailer'), many=True).data)
+        return Response(PaymentSerializer(qs.select_related('order', 'retailer')[:200], many=True).data)
 
     def post(self, request):
         serializer = PaymentSerializer(data=request.data)
@@ -466,7 +481,7 @@ class NotificationListAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        qs = Notification.objects.filter(recipient=request.user)
+        qs = Notification.objects.filter(recipient=request.user)[:200]
         return Response(NotificationSerializer(qs, many=True).data)
 
     def post(self, request):

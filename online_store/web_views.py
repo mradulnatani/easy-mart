@@ -5,7 +5,9 @@ import re
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model
-from django.db.models import F, Q, Sum
+from django.core.cache import cache
+from django.db import transaction
+from django.db.models import Case, DecimalField, F, Q, Sum, Value, When
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -15,6 +17,7 @@ from .auth import (
     clear_jwt_cookies,
     jwt_login_required,
     retailer_required,
+    safe_redirect_url,
     set_jwt_cookies,
     wholesaler_required,
 )
@@ -54,6 +57,56 @@ def _safe_slug(name: str) -> str:
     return slug or 'shop'
 
 
+def _csv_safe(value) -> str:
+    """Prevent CSV/spreadsheet formula injection when opening exports in Excel."""
+    text = str(value) if value is not None else ''
+    if text and text[0] in ('=', '+', '-', '@', '\t', '\r'):
+        return "'" + text
+    return text
+
+
+def _is_rate_limited(
+    request,
+    scope: str,
+    limit: int = 20,
+    window: int = 300,
+    increment: bool = True,
+    reset: bool = False,
+) -> bool:
+    ip = (request.META.get('HTTP_X_FORWARDED_FOR') or request.META.get('REMOTE_ADDR') or 'unknown').split(',')[0].strip()
+    key = f'ratelimit:{scope}:{ip}'
+    if reset:
+        cache.delete(key)
+        return False
+    count = cache.get(key, 0)
+    if increment:
+        count += 1
+        cache.set(key, count, timeout=window)
+        return count > limit
+    return count >= limit
+
+
+def _aggregate_order_totals(orders_qs) -> dict[str, Decimal]:
+    """Compute billed, paid, and clamped non-negative due totals directly in SQL."""
+    raw_due = F('total_price') + F('delivery_fee') - F('amount_paid')
+    agg = orders_qs.aggregate(
+        total_billed=Sum(F('total_price') + F('delivery_fee'), output_field=DecimalField(max_digits=14, decimal_places=2)),
+        total_paid=Sum('amount_paid', output_field=DecimalField(max_digits=14, decimal_places=2)),
+        total_due=Sum(
+            Case(
+                When(total_price__gt=F('amount_paid') - F('delivery_fee'), then=raw_due),
+                default=Value(Decimal('0.00')),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            )
+        ),
+    )
+    return {
+        'total_billed': (agg['total_billed'] or Decimal('0.00')).quantize(Decimal('0.01')),
+        'total_paid': (agg['total_paid'] or Decimal('0.00')).quantize(Decimal('0.01')),
+        'total_due': (agg['total_due'] or Decimal('0.00')).quantize(Decimal('0.01')),
+    }
+
+
 def home_view(request):
     if request.user.is_authenticated:
         if request.user.is_wholesaler:
@@ -81,28 +134,40 @@ def home_view(request):
 
 
 def login_view(request):
-    next_url = request.GET.get('next') or request.POST.get('next') or ''
+    raw_next = request.GET.get('next') or request.POST.get('next') or ''
+    next_url = safe_redirect_url(request, raw_next, fallback='')
     if request.user.is_authenticated and request.method == 'GET':
         return redirect(next_url or 'home')
 
     if request.method == 'POST':
         username = request.POST.get('username', '').strip()
         password = request.POST.get('password', '')
+        rate_scope = f'login:{username.lower()}'
+        if _is_rate_limited(request, rate_scope, limit=10, window=300, increment=False):
+            messages.error(request, 'Too many failed login attempts. Please wait a few minutes and try again.')
+            return render(request, 'auth/login.html', {'next': next_url}, status=429)
+
         user = authenticate(username=username, password=password)
         if user is not None:
+            _is_rate_limited(request, rate_scope, reset=True)
             target = next_url or ('wholesaler_dashboard' if user.is_wholesaler else 'retailer_dashboard')
             response = redirect(target)
             set_jwt_cookies(response, user)
             messages.success(request, f'Welcome back, {user.display_name}.')
             return response
+        _is_rate_limited(request, rate_scope, limit=10, window=300, increment=True)
         messages.error(request, 'Invalid username or password.')
 
     return render(request, 'auth/login.html', {'next': next_url})
 
 
 def register_view(request):
-    next_url = request.GET.get('next') or request.POST.get('next') or ''
+    raw_next = request.GET.get('next') or request.POST.get('next') or ''
+    next_url = safe_redirect_url(request, raw_next, fallback='')
     if request.method == 'POST':
+        if _is_rate_limited(request, 'register', limit=15, window=300):
+            messages.error(request, 'Too many registration attempts. Please try again shortly.')
+            return render(request, 'auth/register.html', {'next': next_url, 'form_data': request.POST}, status=429)
         username = request.POST.get('username', '').strip()
         email = request.POST.get('email', '').strip()
         password = request.POST.get('password', '')
@@ -256,10 +321,12 @@ def wholesaler_dashboard(request):
     in_transit_orders = orders.filter(status__in=[Order.OrderStatus.SHIPPED, Order.OrderStatus.IN_TRANSIT, Order.OrderStatus.OUT_FOR_DELIVERY])
 
     active_orders = orders.exclude(status=Order.OrderStatus.CANCELLED)
-    total_collected = sum((o.amount_paid for o in active_orders), Decimal('0.00'))
-    total_receivable = sum((o.balance_due for o in active_orders), Decimal('0.00'))
+    totals = _aggregate_order_totals(active_orders)
+    total_collected = totals['total_paid']
+    total_receivable = totals['total_due']
 
     pending_verifications = payments.filter(status=Paymentdetails.VerificationStatus.PENDING).count()
+    unread_notifications = Notification.objects.filter(recipient=request.user, is_read=False)[:5]
 
     return render(
         request,
@@ -275,6 +342,7 @@ def wholesaler_dashboard(request):
             'total_receivable': total_receivable,
             'pending_verifications': pending_verifications,
             'recent_orders': orders[:8],
+            'unread_notifications': unread_notifications,
         },
     )
 
@@ -453,6 +521,7 @@ def wholesaler_inventory_view(request):
                     user=request.user,
                     reason=reason,
                     notes=notes or 'Manual dashboard update',
+                    notify_on_restock=True,
                 )
                 messages.success(request, f'Updated stock for {product.product_name} to {new_qty}.')
             except (ValueError, BusinessRuleError) as exc:
@@ -522,9 +591,18 @@ def wholesaler_inventory_export_csv(request):
     ])
     for s in stocks:
         writer.writerow([
-            s.sku, s.product_name, s.category, s.company_name, s.capacity,
-            s.unit_type, s.min_order_quantity, s.price, s.gst_rate,
-            s.available_stock_count, s.low_stock_threshold, s.store.store_name,
+            _csv_safe(s.sku),
+            _csv_safe(s.product_name),
+            _csv_safe(s.category),
+            _csv_safe(s.company_name),
+            _csv_safe(s.capacity),
+            _csv_safe(s.unit_type),
+            s.min_order_quantity,
+            s.price,
+            s.gst_rate,
+            s.available_stock_count,
+            s.low_stock_threshold,
+            _csv_safe(s.store.store_name),
         ])
     return response
 
@@ -719,7 +797,7 @@ def wholesaler_payments_view(request):
 def retailer_dashboard(request):
     orders = Order.objects.filter(customer=request.user).select_related('store', 'shipment')
     active_orders = orders.exclude(status=Order.OrderStatus.CANCELLED)
-    total_due = sum((o.balance_due for o in active_orders), Decimal('0.00'))
+    total_due = _aggregate_order_totals(active_orders)['total_due']
     in_transit = orders.filter(
         status__in=[
             Order.OrderStatus.SHIPPED,
@@ -727,9 +805,6 @@ def retailer_dashboard(request):
             Order.OrderStatus.OUT_FOR_DELIVERY,
         ]
     ).count()
-
-    for w in User.objects.filter(role=User.Roles.WHOLESALER, stores__isnull=True):
-        ensure_default_store_for_wholesaler(w)
 
     stores = StoreDetails.objects.prefetch_related('service_areas', 'stocks').order_by('-created_at')
     unread_notifications = Notification.objects.filter(recipient=request.user, is_read=False)[:5]
@@ -751,9 +826,6 @@ def retailer_dashboard(request):
 
 @retailer_required
 def retailer_shops_view(request):
-    for w in User.objects.filter(role=User.Roles.WHOLESALER, stores__isnull=True):
-        ensure_default_store_for_wholesaler(w)
-
     stores = StoreDetails.objects.select_related('owner').prefetch_related('service_areas', 'stocks').order_by('-created_at')
     q = request.GET.get('q', '').strip()
     city = request.GET.get('city', '').strip()
@@ -840,32 +912,39 @@ def add_to_cart_view(request, product_id):
     if request.method != 'POST':
         return redirect('retailer_catalog')
 
-    product = get_object_or_404(Stock, pk=product_id)
-    try:
-        qty = int(request.POST.get('quantity') or product.min_order_quantity)
-    except ValueError:
-        qty = product.min_order_quantity
+    next_target = safe_redirect_url(request, request.POST.get('next', ''), fallback='')
 
-    if qty < product.min_order_quantity:
-        messages.error(request, f'Minimum order quantity for {product.product_name} is {product.min_order_quantity}.')
-        return redirect(request.POST.get('next') or 'retailer_catalog')
+    with transaction.atomic():
+        product = get_object_or_404(Stock.objects.select_for_update(), pk=product_id)
+        try:
+            qty = int(request.POST.get('quantity') or product.min_order_quantity)
+        except ValueError:
+            qty = product.min_order_quantity
 
-    if qty > product.available_stock_count:
-        messages.error(request, f'Only {product.available_stock_count} units available for {product.product_name}.')
-        return redirect(request.POST.get('next') or 'retailer_catalog')
+        if qty < product.min_order_quantity:
+            messages.error(request, f'Minimum order quantity for {product.product_name} is {product.min_order_quantity}.')
+            return redirect(next_target or 'retailer_catalog')
 
-    cart, _ = Cart.objects.get_or_create(retailer=request.user)
-    item, created = CartItem.objects.get_or_create(cart=cart, product=product, defaults={'quantity': qty})
-    if not created:
-        new_qty = item.quantity + qty
-        if new_qty > product.available_stock_count:
-            messages.error(request, f'Cannot exceed available stock ({product.available_stock_count}).')
-            return redirect(request.POST.get('next') or 'retailer_cart')
-        item.quantity = new_qty
-        item.save(update_fields=['quantity'])
+        if qty > product.available_stock_count:
+            messages.error(request, f'Only {product.available_stock_count} units available for {product.product_name}.')
+            return redirect(next_target or 'retailer_catalog')
+
+        cart, _ = Cart.objects.get_or_create(retailer=request.user)
+        item, created = CartItem.objects.select_for_update().get_or_create(
+            cart=cart,
+            product=product,
+            defaults={'quantity': qty},
+        )
+        if not created:
+            new_qty = item.quantity + qty
+            if new_qty > product.available_stock_count:
+                messages.error(request, f'Cannot exceed available stock ({product.available_stock_count}).')
+                return redirect(next_target or 'retailer_cart')
+            item.quantity = new_qty
+            item.save(update_fields=['quantity'])
 
     messages.success(request, f'Added {qty} x {product.product_name} to cart.')
-    return redirect(request.POST.get('next') or 'retailer_cart')
+    return redirect(next_target or 'retailer_cart')
 
 
 @retailer_required
@@ -875,22 +954,27 @@ def retailer_cart_view(request):
     if request.method == 'POST':
         action = request.POST.get('action')
         if action == 'update_item':
-            item = get_object_or_404(CartItem, pk=request.POST.get('item_id'), cart=cart)
-            try:
-                qty = int(request.POST.get('quantity') or 0)
-            except ValueError:
-                qty = 0
-            if qty <= 0:
-                item.delete()
-                messages.info(request, f'Removed {item.product.product_name} from cart.')
-            elif qty < item.product.min_order_quantity:
-                messages.error(request, f'Minimum order quantity is {item.product.min_order_quantity}.')
-            elif qty > item.product.available_stock_count:
-                messages.error(request, f'Only {item.product.available_stock_count} units in stock.')
-            else:
-                item.quantity = qty
-                item.save(update_fields=['quantity'])
-                messages.success(request, 'Cart updated.')
+            with transaction.atomic():
+                item = get_object_or_404(
+                    CartItem.objects.select_for_update().select_related('product'),
+                    pk=request.POST.get('item_id'),
+                    cart=cart,
+                )
+                try:
+                    qty = int(request.POST.get('quantity') or 0)
+                except ValueError:
+                    qty = 0
+                if qty <= 0:
+                    item.delete()
+                    messages.info(request, f'Removed {item.product.product_name} from cart.')
+                elif qty < item.product.min_order_quantity:
+                    messages.error(request, f'Minimum order quantity is {item.product.min_order_quantity}.')
+                elif qty > item.product.available_stock_count:
+                    messages.error(request, f'Only {item.product.available_stock_count} units in stock.')
+                else:
+                    item.quantity = qty
+                    item.save(update_fields=['quantity'])
+                    messages.success(request, 'Cart updated.')
             return redirect('retailer_cart')
 
         if action == 'remove_item':
@@ -1066,9 +1150,10 @@ def retailer_order_detail_view(request, order_id):
 def retailer_payments_view(request):
     payments = Paymentdetails.objects.filter(retailer=request.user).select_related('order', 'order__store')
     orders = Order.objects.filter(customer=request.user).exclude(status=Order.OrderStatus.CANCELLED).select_related('store')
-    total_billed = sum((o.grand_total for o in orders), Decimal('0.00'))
-    total_paid = sum((o.amount_paid for o in orders), Decimal('0.00'))
-    total_due = sum((o.balance_due for o in orders), Decimal('0.00'))
+    totals = _aggregate_order_totals(orders)
+    total_billed = totals['total_billed']
+    total_paid = totals['total_paid']
+    total_due = totals['total_due']
     return render(
         request,
         'retailer/payments.html',

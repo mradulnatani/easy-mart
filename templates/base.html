@@ -20,30 +20,31 @@
                 Easy<span>Mart</span>
             </a>
             <button type="button" class="nav-toggle" aria-label="Toggle Menu" onclick="document.getElementById('mainNavLinks').classList.toggle('open')">
-                &#9776; Menu
+                &#9776; Menu{% if user.is_authenticated and nav_badges.dashboard %}<span class="nav-badge">{{ nav_badges.dashboard }}</span>{% endif %}
             </button>
         </div>
         <div id="mainNavLinks" class="nav-links">
             {% if user.is_authenticated %}
                 {% if user.is_wholesaler %}
-                    <a href="{% url 'wholesaler_dashboard' %}" class="{% if request.resolver_match.url_name == 'wholesaler_dashboard' %}active{% endif %}">Dashboard</a>
-                    <a href="{% url 'wholesaler_stores' %}" class="{% if request.resolver_match.url_name == 'wholesaler_stores' %}active{% endif %}">Stores &amp; QR</a>
-                    <a href="{% url 'wholesaler_inventory' %}" class="{% if request.resolver_match.url_name == 'wholesaler_inventory' %}active{% endif %}">Inventory</a>
-                    <a href="{% url 'wholesaler_audit_log' %}" class="{% if request.resolver_match.url_name == 'wholesaler_audit_log' %}active{% endif %}">Stock Audit</a>
-                    <a href="{% url 'wholesaler_orders' %}" class="{% if request.resolver_match.url_name == 'wholesaler_orders' %}active{% endif %}">Orders</a>
-                    <a href="{% url 'wholesaler_payments' %}" class="{% if request.resolver_match.url_name == 'wholesaler_payments' %}active{% endif %}">Payments &amp; Dues</a>
+                    <a href="{% url 'wholesaler_dashboard' %}" class="{% if request.resolver_match.url_name == 'wholesaler_dashboard' %}active{% endif %}">Dashboard{% if nav_badges.dashboard %}<span class="nav-badge">{{ nav_badges.dashboard }}</span>{% endif %}</a>
+                    <a href="{% url 'wholesaler_stores' %}" class="{% if request.resolver_match.url_name == 'wholesaler_stores' %}active{% endif %}">Stores &amp; QR{% if nav_badges.stores %}<span class="nav-badge">{{ nav_badges.stores }}</span>{% endif %}</a>
+                    <a href="{% url 'wholesaler_inventory' %}" class="{% if request.resolver_match.url_name == 'wholesaler_inventory' %}active{% endif %}">Inventory{% if nav_badges.inventory %}<span class="nav-badge">{{ nav_badges.inventory }}</span>{% endif %}</a>
+                    <a href="{% url 'wholesaler_audit_log' %}" class="{% if request.resolver_match.url_name == 'wholesaler_audit_log' %}active{% endif %}">Stock Audit{% if nav_badges.audit %}<span class="nav-badge">{{ nav_badges.audit }}</span>{% endif %}</a>
+                    <a href="{% url 'wholesaler_orders' %}" class="{% if request.resolver_match.url_name == 'wholesaler_orders' %}active{% endif %}">Orders{% if nav_badges.orders %}<span class="nav-badge">{{ nav_badges.orders }}</span>{% endif %}</a>
+                    <a href="{% url 'wholesaler_payments' %}" class="{% if request.resolver_match.url_name == 'wholesaler_payments' %}active{% endif %}">Payments &amp; Dues{% if nav_badges.payments %}<span class="nav-badge">{{ nav_badges.payments }}</span>{% endif %}</a>
+                    <a href="{% url 'notifications_page' %}" class="{% if request.resolver_match.url_name == 'notifications_page' %}active{% endif %}">Alerts{% if nav_badges.alerts %}<span class="nav-badge">{{ nav_badges.alerts }}</span>{% endif %}</a>
                     <span class="badge-role">Wholesaler: {{ user.display_name }}</span>
                 {% else %}
-                    <a href="{% url 'retailer_dashboard' %}" class="{% if request.resolver_match.url_name == 'retailer_dashboard' %}active{% endif %}">Dashboard</a>
-                    <a href="{% url 'retailer_shops' %}" class="{% if request.resolver_match.url_name == 'retailer_shops' %}active{% endif %}">Wholesale Shops</a>
-                    <a href="{% url 'retailer_catalog' %}" class="{% if request.resolver_match.url_name == 'retailer_catalog' %}active{% endif %}">Catalog</a>
-                    <a href="{% url 'retailer_cart' %}" class="{% if request.resolver_match.url_name == 'retailer_cart' %}active{% endif %}">Cart ({{ cart_item_count }})</a>
-                    <a href="{% url 'retailer_orders' %}" class="{% if request.resolver_match.url_name == 'retailer_orders' %}active{% endif %}">My Orders</a>
-                    <a href="{% url 'retailer_payments' %}" class="{% if request.resolver_match.url_name == 'retailer_payments' %}active{% endif %}">Payments &amp; Dues</a>
-                    <a href="{% url 'notifications_page' %}" class="{% if request.resolver_match.url_name == 'notifications_page' %}active{% endif %}">Alerts{% if unread_notification_count %} ({{ unread_notification_count }}){% endif %}</a>
+                    <a href="{% url 'retailer_dashboard' %}" class="{% if request.resolver_match.url_name == 'retailer_dashboard' %}active{% endif %}">Dashboard{% if nav_badges.dashboard %}<span class="nav-badge">{{ nav_badges.dashboard }}</span>{% endif %}</a>
+                    <a href="{% url 'retailer_shops' %}" class="{% if request.resolver_match.url_name == 'retailer_shops' %}active{% endif %}">Wholesale Shops{% if nav_badges.shops %}<span class="nav-badge">{{ nav_badges.shops }}</span>{% endif %}</a>
+                    <a href="{% url 'retailer_catalog' %}" class="{% if request.resolver_match.url_name == 'retailer_catalog' %}active{% endif %}">Catalog{% if nav_badges.catalog %}<span class="nav-badge">{{ nav_badges.catalog }}</span>{% endif %}</a>
+                    <a href="{% url 'retailer_cart' %}" class="{% if request.resolver_match.url_name == 'retailer_cart' %}active{% endif %}">Cart{% if nav_badges.cart %}<span class="nav-badge">{{ nav_badges.cart }}</span>{% endif %}</a>
+                    <a href="{% url 'retailer_orders' %}" class="{% if request.resolver_match.url_name == 'retailer_orders' %}active{% endif %}">My Orders{% if nav_badges.orders %}<span class="nav-badge">{{ nav_badges.orders }}</span>{% endif %}</a>
+                    <a href="{% url 'retailer_payments' %}" class="{% if request.resolver_match.url_name == 'retailer_payments' %}active{% endif %}">Payments &amp; Dues{% if nav_badges.payments %}<span class="nav-badge">{{ nav_badges.payments }}</span>{% endif %}</a>
+                    <a href="{% url 'notifications_page' %}" class="{% if request.resolver_match.url_name == 'notifications_page' %}active{% endif %}">Alerts{% if nav_badges.alerts %}<span class="nav-badge">{{ nav_badges.alerts }}</span>{% endif %}</a>
                     <span class="badge-role">Retailer: {{ user.display_name }}</span>
                 {% endif %}
-                <a href="{% url 'profile_page' %}" class="{% if request.resolver_match.url_name == 'profile_page' %}active{% endif %}">Profile</a>
+                <a href="{% url 'profile_page' %}" class="{% if request.resolver_match.url_name == 'profile_page' %}active{% endif %}">Profile{% if nav_badges.profile %}<span class="nav-badge">{{ nav_badges.profile }}</span>{% endif %}</a>
                 <a href="{% url 'logout_page' %}">Logout</a>
             {% else %}
                 <a href="{% url 'home' %}#features">Features</a>
@@ -119,17 +120,17 @@
 {% if user.is_authenticated %}
 <div class="mobile-bottom-nav">
     {% if user.is_wholesaler %}
-        <a href="{% url 'wholesaler_dashboard' %}" class="{% if request.resolver_match.url_name == 'wholesaler_dashboard' %}active{% endif %}">Home</a>
-        <a href="{% url 'wholesaler_inventory' %}" class="{% if request.resolver_match.url_name == 'wholesaler_inventory' %}active{% endif %}">Stock</a>
-        <a href="{% url 'wholesaler_orders' %}" class="{% if request.resolver_match.url_name == 'wholesaler_orders' %}active{% endif %}">Orders</a>
-        <a href="{% url 'wholesaler_payments' %}" class="{% if request.resolver_match.url_name == 'wholesaler_payments' %}active{% endif %}">Dues</a>
-        <a href="{% url 'wholesaler_stores' %}" class="{% if request.resolver_match.url_name == 'wholesaler_stores' %}active{% endif %}">Shop QR</a>
+        <a href="{% url 'wholesaler_dashboard' %}" class="{% if request.resolver_match.url_name == 'wholesaler_dashboard' %}active{% endif %}">Home{% if nav_badges.dashboard %} <span class="nav-badge">{{ nav_badges.dashboard }}</span>{% endif %}</a>
+        <a href="{% url 'wholesaler_inventory' %}" class="{% if request.resolver_match.url_name == 'wholesaler_inventory' %}active{% endif %}">Stock{% if nav_badges.inventory %} <span class="nav-badge">{{ nav_badges.inventory }}</span>{% endif %}</a>
+        <a href="{% url 'wholesaler_orders' %}" class="{% if request.resolver_match.url_name == 'wholesaler_orders' %}active{% endif %}">Orders{% if nav_badges.orders %} <span class="nav-badge">{{ nav_badges.orders }}</span>{% endif %}</a>
+        <a href="{% url 'wholesaler_payments' %}" class="{% if request.resolver_match.url_name == 'wholesaler_payments' %}active{% endif %}">Dues{% if nav_badges.payments %} <span class="nav-badge">{{ nav_badges.payments }}</span>{% endif %}</a>
+        <a href="{% url 'notifications_page' %}" class="{% if request.resolver_match.url_name == 'notifications_page' %}active{% endif %}">Alerts{% if nav_badges.alerts %} <span class="nav-badge">{{ nav_badges.alerts }}</span>{% endif %}</a>
     {% else %}
-        <a href="{% url 'retailer_dashboard' %}" class="{% if request.resolver_match.url_name == 'retailer_dashboard' %}active{% endif %}">Home</a>
-        <a href="{% url 'retailer_shops' %}" class="{% if request.resolver_match.url_name == 'retailer_shops' %}active{% endif %}">Shops</a>
-        <a href="{% url 'retailer_catalog' %}" class="{% if request.resolver_match.url_name == 'retailer_catalog' %}active{% endif %}">Catalog</a>
-        <a href="{% url 'retailer_cart' %}" class="{% if request.resolver_match.url_name == 'retailer_cart' %}active{% endif %}">Cart ({{ cart_item_count }})</a>
-        <a href="{% url 'retailer_orders' %}" class="{% if request.resolver_match.url_name == 'retailer_orders' %}active{% endif %}">Orders</a>
+        <a href="{% url 'retailer_dashboard' %}" class="{% if request.resolver_match.url_name == 'retailer_dashboard' %}active{% endif %}">Home{% if nav_badges.dashboard %} <span class="nav-badge">{{ nav_badges.dashboard }}</span>{% endif %}</a>
+        <a href="{% url 'retailer_shops' %}" class="{% if request.resolver_match.url_name == 'retailer_shops' %}active{% endif %}">Shops{% if nav_badges.shops %} <span class="nav-badge">{{ nav_badges.shops }}</span>{% endif %}</a>
+        <a href="{% url 'retailer_cart' %}" class="{% if request.resolver_match.url_name == 'retailer_cart' %}active{% endif %}">Cart{% if nav_badges.cart %} <span class="nav-badge">{{ nav_badges.cart }}</span>{% endif %}</a>
+        <a href="{% url 'retailer_orders' %}" class="{% if request.resolver_match.url_name == 'retailer_orders' %}active{% endif %}">Orders{% if nav_badges.orders %} <span class="nav-badge">{{ nav_badges.orders }}</span>{% endif %}</a>
+        <a href="{% url 'notifications_page' %}" class="{% if request.resolver_match.url_name == 'notifications_page' %}active{% endif %}">Alerts{% if nav_badges.alerts %} <span class="nav-badge">{{ nav_badges.alerts }}</span>{% endif %}</a>
     {% endif %}
 </div>
 {% endif %}

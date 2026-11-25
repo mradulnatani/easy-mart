@@ -6,6 +6,9 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.shortcuts import redirect
+from django.utils.http import url_has_allowed_host_and_scheme
+from rest_framework import exceptions
+from rest_framework.authentication import CSRFCheck
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
@@ -48,8 +51,27 @@ def clear_jwt_cookies(response):
     return response
 
 
+def safe_redirect_url(request, raw_url: str, fallback: str = 'home') -> str:
+    """Return raw_url only when it points to an allowed host/scheme; otherwise return fallback."""
+    candidate = (raw_url or '').strip()
+    if candidate and url_has_allowed_host_and_scheme(
+        candidate,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return candidate
+    return fallback
+
+
 class JWTCookieAuthentication(JWTAuthentication):
     """DRF authentication checking Authorization header first, then HttpOnly cookie."""
+
+    def _enforce_csrf(self, request):
+        check = CSRFCheck(lambda req: None)
+        check.process_request(request)
+        reason = check.process_view(request, None, (), {})
+        if reason:
+            raise exceptions.PermissionDenied(f'CSRF Failed: {reason}')
 
     def authenticate(self, request):
         header_auth = super().authenticate(request)
@@ -62,9 +84,12 @@ class JWTCookieAuthentication(JWTAuthentication):
 
         try:
             validated_token = self.get_validated_token(raw_token)
-            return self.get_user(validated_token), validated_token
+            user = self.get_user(validated_token)
         except (InvalidToken, TokenError):
             return None
+
+        self._enforce_csrf(request)
+        return user, validated_token
 
 
 class JWTCookieMiddleware:
@@ -150,8 +175,10 @@ def jwt_login_required(view_func):
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
         if not request.user.is_authenticated:
-            next_url = quote(request.get_full_path(), safe='/:?=&')
-            return redirect(f"{settings.LOGIN_URL}?next={next_url}")
+            next_path = safe_redirect_url(request, request.get_full_path(), fallback='')
+            if next_path:
+                return redirect(f"{settings.LOGIN_URL}?next={quote(next_path, safe='/:?=&')}")
+            return redirect(settings.LOGIN_URL)
         return view_func(request, *args, **kwargs)
     return _wrapped
 
