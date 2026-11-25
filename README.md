@@ -1,14 +1,17 @@
 # Easy-Mart — B2B Wholesale & Retailer Platform
 
-Easy-Mart is a mobile-first Django web application and REST API built for **Wholesalers** and **Retailers** operating across multiple cities and states. It replaces manual phone ordering with self-serve wholesale ordering, automated stock count maintenance, multi-city delivery tracking, payment & credit-ledger reconciliation, scannable shop QR codes, new-product alerts, and order-history recommendations.
+Easy-Mart is a mobile-first Django web application and REST API built for **Wholesalers** and **Retailers** operating across multiple cities and states. It replaces manual phone ordering with self-serve wholesale ordering, automated stock count maintenance, multi-city delivery tracking, payment & credit-ledger reconciliation, scannable shop QR codes, bidirectional restock/order/payment notifications, and order-history recommendations.
 
 ---
 
 ## Key Features
 
-### Authentication & Role Isolation
+### Authentication, Role Isolation & Security Hardening
 - **Two User Roles**: `WHOLESALER` and `RETAILER` ([`CustomUser`](online_store/models.py)).
-- **JWT Auth for SSR HTML & API**: Uses `djangorestframework-simplejwt` with `HttpOnly` cookies (`JWTCookieMiddleware` & `JWTCookieAuthentication` in [`online_store/auth.py`](online_store/auth.py)) alongside standard `Authorization: Bearer <token>` headers for REST clients, with refresh-token rotation and blacklisting on logout.
+- **JWT Auth + CSRF & Open-Redirect Protection**: Uses `djangorestframework-simplejwt` with `HttpOnly`, `SameSite=Lax` cookies (`JWTCookieMiddleware` & `JWTCookieAuthentication` in [`online_store/auth.py`](online_store/auth.py)) alongside `Authorization: Bearer <token>` headers for REST clients, refresh-token rotation & blacklisting on logout, `CSRFCheck` enforcement on cookie-authenticated DRF requests, and `safe_redirect_url` validation on `next` redirects.
+- **Rate Limiting & Upload/Export Protections**:
+  - DRF throttling (`AnonRateThrottle`, `UserRateThrottle`, and `ScopedRateThrottle` for `auth` endpoints) plus cache-backed brute-force throttling on web login and registration.
+  - Read-only `store` ownership protection on `StockSerializer`, UUID-randomized payment proof filenames limited to `.jpg`, `.jpeg`, `.png`, `.webp`, `.pdf` (`<= 5 MB`), `.xlsx` zip-bomb & `<!DOCTYPE`/`<!ENTITY` XML guards, and CSV formula-injection neutralization on inventory exports.
 - **Automatic Shop Setup**: Registering as a wholesaler automatically creates their initial [`StoreDetails`](online_store/models.py) storefront from their business profile.
 
 ### Wholesaler Portal
@@ -21,27 +24,30 @@ Easy-Mart is a mobile-first Django web application and REST API built for **Whol
   - Export current inventory to CSV, monitor low-stock alerts, and track every stock change (restock, order deduction, cancellation restore, damaged goods, discrepancy correction) in [`ProductAudit`](online_store/models.py).
 - **Order & Logistics Management**:
   - Update order statuses (`PENDING` → `CONFIRMED` → `PACKED` → `SHIPPED` → `IN_TRANSIT` → `OUT_FOR_DELIVERY` → `DELIVERED`), attach LR/tracking numbers, transport company, driver name/phone, vehicle number, current city/state, and ETA ([`Shipment`](online_store/models.py)).
-  - Completed and cancelled orders are strictly read-only (`View` only).
+  - Cancelled and fully settled completed orders are strictly read-only (`View` only); **credit-based completed orders** with an unsettled balance keep the `Manage` payment ledger controls active until fully paid while keeping status and shipment locked.
 - **Payment Ledger & Verification**:
-  - Track retailer-wise total billed, verified receipts, and balance due, and approve/reject UPI payment proofs or record Cash/Cheque/Bank payments.
+  - SQL-aggregated receivables and collected totals (excluding cancelled orders), retailer-wise billed/paid/due ledger, UPI proof verification, and verified Cash/Cheque/Bank payment recording.
 
 ### Retailer Portal
 - **Browse All Wholesalers & Catalog**:
   - View every registered wholesale shop on the dashboard and `/store/retailer/shops/`, or filter products by city, state, wholesaler, category, or SKU.
 - **Cart, Multi-Wholesaler Checkout & Reordering**:
-  - Add items respecting minimum order quantities (MOQ) and available stock; checkout splits multi-wholesaler carts into separate trackable orders with atomic stock locking (`select_for_update`).
+  - Add items respecting minimum order quantities (MOQ) and available stock; checkout splits multi-wholesaler carts into separate trackable orders with deterministic sorted row locking (`select_for_update`), duplicate-line merging, and atomic credit-limit locking.
   - One-click reorder from past orders and printable tax invoices / delivery challans.
 - **₹10,000 Credit Limit & UPI-Only Proof**:
   - Every retailer has a default **₹10,000.00 credit limit** to defer payment at checkout or on unpaid orders without being prompted for a payment type or proof during credit ordering.
+  - Unsettled credit orders retain a `Settle Ledger` button even after delivery completion; cancelled orders always show `₹0.00` balance due (`No Due`) and free the retailer's credit limit.
   - When submitting a payment, the proof/screenshot upload field is shown and accepted **only when `UPI` is selected**.
 - **Two-Step Delivery Confirmation**:
-  - Wholesalers mark orders `DELIVERED`, and retailers confirm receipt (`Confirm Delivery Received`) to transition the order to `COMPLETED` (read-only).
-- **New-Product Alerts & Recommendations**:
-  - Retailers receive in-app (and email) [`Notification`](online_store/models.py) alerts whenever a wholesaler they previously ordered from adds new products.
-  - Hybrid order-history recommendation engine ([`online_store/recommendations.py`](online_store/recommendations.py)) scores products by repeat-order frequency/recency, category/brand/store affinity, collaborative filtering, and local delivery coverage.
+  - Wholesalers mark orders `DELIVERED`, and retailers confirm receipt (`Confirm Delivery Received`) to transition the order to `COMPLETED`.
+- **Bidirectional Alerts, Corner Notification Badges & Recommendations**:
+  - Retailers receive [`Notification`](online_store/models.py) alerts whenever a wholesaler they previously ordered from adds new products or restocks existing ones (manually, via CSV/XLSX upload, or via API), as well as on order status updates, delivery, and payment verification/rejection.
+  - Wholesalers receive alerts on new orders, payment submissions requiring verification, retailer delivery confirmations, and cancellations.
+  - Navbar headings display **WhatsApp-style floating corner badges** (`.nav-badge`) whenever unread alerts, low-stock items, pending orders, or unsettled/unverified payments require action.
+  - Bounded SQL + hybrid order-history recommendation engine ([`online_store/recommendations.py`](online_store/recommendations.py)) scores products by repeat-order frequency/recency, category/brand/store affinity, collaborative filtering, and local delivery coverage.
 
 ### Mobile-First Responsive UI
-- Built with Django HTML templates ([`templates/`](templates/)) and responsive CSS ([`static/css/app.css`](static/css/app.css)), featuring a collapsible top menu, fixed mobile bottom navigation bar, 2×2 stat cards, `16px` inputs (preventing mobile auto-zoom), and 44px touch targets.
+- Built with Django HTML templates ([`templates/`](templates/)) and responsive CSS ([`static/css/app.css`](static/css/app.css)), featuring a collapsible top menu, fixed mobile bottom navigation bar with floating badges, 2×2 stat cards, `16px` inputs (preventing mobile auto-zoom), and 44px touch targets.
 
 ---
 
@@ -49,8 +55,9 @@ Easy-Mart is a mobile-first Django web application and REST API built for **Whol
 
 - **Backend**: Python 3.12, Django 6.1.2, Django REST Framework 3.18.3
 - **Auth**: `djangorestframework-simplejwt` 5.5.1 (`PyJWT` 2.15.1)
+- **Database**: PostgreSQL (`psycopg2-binary` 2.9.13) configured via `.env` (with optional `DB_ENGINE=django.db.backends.sqlite3` override)
+- **Configuration**: `python-dotenv` 1.2.4 reading environment variables from `.env`
 - **Frontend**: Django HTML Templates + vanilla CSS (no external JS/CSS build step required)
-- **Database**: SQLite (`db.sqlite3`) by default
 
 ---
 
@@ -58,21 +65,23 @@ Easy-Mart is a mobile-first Django web application and REST API built for **Whol
 
 ```text
 easy-mart/
+├── .env                        # Local PostgreSQL & Django environment configuration (gitignored)
 ├── easy_mart/                  # Django project settings & root URLs
 ├── online_store/
-│   ├── api_views.py            # DRF REST API endpoints
-│   ├── auth.py                 # JWT cookie middleware, auth class & role decorators
-│   ├── context_processors.py   # Cart count & unread notification count
+│   ├── api_views.py            # DRF REST API endpoints (throttled & concurrency-locked)
+│   ├── auth.py                 # JWT cookie middleware, CSRF-enforced auth & safe redirect helpers
+│   ├── context_processors.py   # SQL-aggregated navbar action counters (nav_badges)
+│   ├── migrations/             # Schema migrations (indexes & DB CheckConstraints)
 │   ├── models.py               # Users, Stores, ServiceAreas, Stock, Orders, Shipments, Payments, Audits, Notifications
 │   ├── permissions.py          # IsWholesaler, IsRetailer, IsStoreOwner
 │   ├── qr.py                   # Pure-Python QR code generator (SVG & PNG)
 │   ├── recommendations.py      # Retailer order-history recommendation engine
-│   ├── serializer.py           # DRF serializers
-│   ├── services.py             # Transactional business logic & .xlsx/.csv importer
-│   ├── tests.py                # End-to-end test suite
+│   ├── serializer.py           # DRF serializers with read-only ownership fields
+│   ├── services.py             # Transactional business logic, sorted locking, deferred emails & .xlsx/.csv importer
+│   ├── tests.py                # End-to-end, concurrency & security test suite
 │   ├── urls.py                 # Web & API routes under /store/
 │   └── web_views.py            # Server-rendered HTML views
-├── static/css/app.css          # Mobile-first stylesheet
+├── static/css/app.css          # Mobile-first stylesheet & corner badge styles
 ├── templates/                  # Django HTML templates (auth, wholesaler, retailer, shop, orders, notifications)
 ├── manage.py
 └── requirements.txt
@@ -93,17 +102,32 @@ easy-mart/
    pip install -r requirements.txt
    ```
 
-3. **Apply database migrations**
+3. **Configure `.env` (PostgreSQL)**
+   Create a PostgreSQL database (for example `CREATE DATABASE easy_mart;`) and configure `.env` in the project root:
+   ```env
+   SECRET_KEY=replace-with-a-long-random-secret-key
+   DEBUG=True
+   ALLOWED_HOSTS=localhost,127.0.0.1
+
+   DB_ENGINE=django.db.backends.postgresql
+   DB_NAME=easy_mart
+   DB_USER=postgres
+   DB_PASSWORD=postgres
+   DB_HOST=localhost
+   DB_PORT=5432
+   ```
+
+4. **Apply database migrations**
    ```bash
    python manage.py migrate
    ```
 
-4. **Create a superuser (optional, for `/admin/`)**
+5. **Create a superuser (optional, for `/admin/`)**
    ```bash
    python manage.py createsuperuser
    ```
 
-5. **Run the development server**
+6. **Run the development server**
    ```bash
    python manage.py runserver
    ```
@@ -113,7 +137,7 @@ easy-mart/
 
 ## Bulk Stock Upload Format (`.xlsx` or `.csv`)
 
-Wholesalers can upload `.xlsx` Excel sheets or `.csv` files directly from **Inventory → Bulk Upload** (or `POST /store/api/uploadviacsv/`).
+Wholesalers can upload `.xlsx` Excel sheets or `.csv` files (up to `5 MB`) directly from **Inventory → Bulk Upload** (or `POST /store/api/uploadviacsv/`).
 
 | Column | Required | Notes / Accepted Aliases |
 | --- | --- | --- |
