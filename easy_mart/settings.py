@@ -96,7 +96,7 @@ REST_FRAMEWORK = {
 
 CORS_ALLOWED_ORIGINS = _env_list(
     'CORS_ALLOWED_ORIGINS',
-    ['http://localhost:3000', 'http://127.0.0.1:8000', 'http://localhost:8000'],
+    ['http://localhost:3000', 'http://127.0.0.1:8000', 'http://localhost:8000','easy-mart-beta.vercel.app'],
 )
 CSRF_TRUSTED_ORIGINS = _env_list(
     'CSRF_TRUSTED_ORIGINS',
