@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% block title %}Wholesaler Orders | Easy-Mart{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Incoming Retailer Orders</h1>
+        <p class="subtitle">Confirm orders, assign transport &amp; drivers across cities/states, and track payments.</p>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom: 1rem;">
+    <form method="get" class="inline-form">
+        <select class="inline-input" name="status">
+            <option value="">All Order Statuses</option>
+            {% for val, label in status_choices %}
+                <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <select class="inline-input" name="payment_status">
+            <option value="">All Payment Statuses</option>
+            {% for val, label in payment_choices %}
+                <option value="{{ val }}" {% if payment_filter == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <input class="inline-input" type="text" name="city" value="{{ city_filter }}" placeholder="Filter destination city...">
+        <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Order</th>
+                    <th>Retailer</th>
+                    <th>Shop</th>
+                    <th>Delivery City / State</th>
+                    <th>Order Status</th>
+                    <th>Payment</th>
+                    <th>Total / Due</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for o in orders %}
+                <tr>
+                    <td><strong>#{{ o.short_id }}</strong><br><span class="subtitle">{{ o.created_at|date:"d M Y" }}</span></td>
+                    <td>{{ o.customer.display_name }}<br><span class="subtitle">{{ o.contact_phone }}</span></td>
+                    <td>{{ o.store.store_name }}</td>
+                    <td>{{ o.delivery_city }}, {{ o.delivery_state }}</td>
+                    <td><span class="pill pill-blue">{{ o.get_status_display }}</span></td>
+                    <td><span class="pill {% if o.payment_status == 'PAID' %}pill-green{% elif o.payment_status == 'PARTIAL' %}pill-amber{% else %}pill-red{% endif %}">{{ o.get_payment_status_display }}</span></td>
+                    <td>&#8377;{{ o.grand_total }}<br><span class="subtitle">Due: &#8377;{{ o.balance_due }}</span></td>
+                    <td>
+                        {% if o.status == 'COMPLETED' or o.status == 'CANCELLED' %}
+                            <a class="btn btn-secondary btn-sm" href="{% url 'wholesaler_order_detail' o.order_id %}">View</a>
+                        {% else %}
+                            <a class="btn btn-primary btn-sm" href="{% url 'wholesaler_order_detail' o.order_id %}">Manage</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="8" class="subtitle">No orders match the selected filters.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

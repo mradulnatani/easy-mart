@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block title %}Easy-Mart | Wholesale B2B Platform{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom: 1.5rem; background: linear-gradient(135deg, #0f172a, #1e3a8a); color: #fff;">
+    <h1 style="margin-top: 0;">Wholesale Ordering, Multi-City Delivery &amp; Ledger Management</h1>
+    <p style="max-width: 720px; color: #cbd5e1;">
+        Replace phone orders with direct B2B ordering, real-time stock tracking, multi-state shipment visibility,
+        payment reconciliation, and instant QR-code shop storefronts.
+    </p>
+    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem;">
+        <a class="btn btn-primary" href="{% url 'register_page' %}">Register as Retailer or Wholesaler</a>
+        <a class="btn btn-secondary" href="{% url 'login_page' %}">Sign In</a>
+    </div>
+</div>
+
+<div class="page-header">
+    <div>
+        <h1>Registered Wholesale Shops</h1>
+        <p class="subtitle">Scan a wholesaler's QR code or open their storefront directly to view products.</p>
+    </div>
+</div>
+
+<div class="grid grid-3">
+    {% for store in stores %}
+    <div class="card">
+        <h3>{{ store.store_name }}</h3>
+        <p class="subtitle">
+            {{ store.store_address }}{% if store.city %}, {{ store.city }}{% endif %}{% if store.state %}, {{ store.state }}{% endif %} - {{ store.pin_code }}
+        </p>
+        {% if store.service_areas.all %}
+        <p style="font-size: 0.85rem; margin-top: 0.6rem;">
+            <strong>Delivers to:</strong>
+            {% for area in store.service_areas.all|slice:":5" %}
+                <span class="pill">{{ area.city }}, {{ area.state }}</span>
+            {% endfor %}
+        </p>
+        {% endif %}
+        <div style="margin-top: 1rem;">
+            <a class="btn btn-primary btn-sm" href="{% url 'shop_products' store.store_id %}">View Products</a>
+        </div>
+    </div>
+    {% empty %}
+    <div class="card">
+        <p class="subtitle">No wholesale shops registered yet. Register a Wholesaler account to create your digital shop and QR code.</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

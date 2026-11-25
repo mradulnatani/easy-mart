@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% block title %}Invoice #{{ order.short_id }} | Easy-Mart{% endblock %}
+
+{% block content %}
+<div class="page-header no-print">
+    <div>
+        <h1>Tax Invoice &amp; Delivery Challan</h1>
+        <p class="subtitle">Order #{{ order.short_id }} ({{ order.order_id }})</p>
+    </div>
+    <button onclick="window.print()" class="btn btn-primary">Print / Save PDF</button>
+</div>
+
+<div class="card">
+    <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 1rem; margin-bottom: 1rem;">
+        <div>
+            <h2 style="margin-bottom: 0.25rem;">{{ order.store.store_name }}</h2>
+            <p class="subtitle">
+                {{ order.store.store_address }}<br>
+                {{ order.store.city }}, {{ order.store.state }} - {{ order.store.pin_code }}<br>
+                {% if order.store.phone_number %}Phone: {{ order.store.phone_number }}{% endif %}
+            </p>
+        </div>
+        <div style="text-align: right;">
+            <strong>Invoice / Order #:</strong> {{ order.short_id }}<br>
+            <strong>Date:</strong> {{ order.created_at|date:"d M Y, H:i" }}<br>
+            <strong>Status:</strong> {{ order.get_status_display }}<br>
+            <strong>Payment:</strong> {{ order.get_payment_status_display }}
+        </div>
+    </div>
+
+    <div class="grid grid-2" style="margin-bottom: 1rem;">
+        <div>
+            <strong>Bill / Ship To:</strong><br>
+            {{ order.customer.display_name }}<br>
+            {% if order.customer.gst_number %}GSTIN: {{ order.customer.gst_number }}<br>{% endif %}
+            {{ order.delivery_address }}<br>
+            {{ order.delivery_city }}, {{ order.delivery_state }} - {{ order.delivery_pincode }}<br>
+            Phone: {{ order.contact_phone }}
+        </div>
+        <div>
+            <strong>Logistics Details:</strong><br>
+            LR / Tracking #: {{ order.shipment.tracking_number|default:"Pending" }}<br>
+            Transporter: {{ order.shipment.transport_company|default:"-" }}<br>
+            Vehicle / Driver: {{ order.shipment.vehicle_number|default:"-" }} / {{ order.shipment.driver_name|default:"-" }}<br>
+            Est. Delivery: {{ order.shipment.estimated_delivery_date|default:"-" }}
+        </div>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>SKU</th>
+                    <th>Product</th>
+                    <th>Qty</th>
+                    <th>Unit Price (incl. GST)</th>
+                    <th>Line Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in order.items.all %}
+                <tr>
+                    <td>{{ item.product.sku }}</td>
+                    <td>{{ item.product.product_name }} ({{ item.product.capacity }})</td>
+                    <td>{{ item.quantity }} {{ item.product.get_unit_type_display }}</td>
+                    <td>&#8377;{{ item.price_at_purchase }}</td>
+                    <td>&#8377;{{ item.line_total }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div style="margin-top: 1rem; text-align: right;">
+        <p>Items Subtotal: <strong>&#8377;{{ order.total_price }}</strong></p>
+        <p>Delivery Fee: <strong>&#8377;{{ order.delivery_fee }}</strong></p>
+        <p style="font-size: 1.15rem;">Grand Total: <strong>&#8377;{{ order.grand_total }}</strong></p>
+        <p>Verified Paid: <strong>&#8377;{{ order.amount_paid }}</strong> | Balance Due: <strong>&#8377;{{ order.balance_due }}</strong></p>
+    </div>
+</div>
+{% endblock %}

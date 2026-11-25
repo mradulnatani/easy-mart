@@ -1,0 +1,86 @@
+{% extends 'base.html' %}
+{% block title %}Wholesaler Payments &amp; Ledger | Easy-Mart{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Retailer Credit Ledger &amp; Payment Verification</h1>
+        <p class="subtitle">Monitor total billed, verified receipts, and outstanding dues per retailer.</p>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom: 1.25rem;">
+    <h2>Retailer Outstanding Balances</h2>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Retailer</th>
+                    <th>City / State</th>
+                    <th>Orders</th>
+                    <th>Total Billed</th>
+                    <th>Verified Paid</th>
+                    <th>Balance Due</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in retailer_ledger %}
+                <tr>
+                    <td><strong>{{ row.retailer.display_name }}</strong><br><span class="subtitle">{{ row.retailer.phone_number }}</span></td>
+                    <td>{{ row.retailer.city }}, {{ row.retailer.state }}</td>
+                    <td>{{ row.orders_count }}</td>
+                    <td>&#8377;{{ row.total_billed }}</td>
+                    <td>&#8377;{{ row.total_paid }}</td>
+                    <td><strong>&#8377;{{ row.balance_due }}</strong></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="subtitle">No retailer ledger entries yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Payment Transactions</h2>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Order</th>
+                    <th>Retailer</th>
+                    <th>Method &amp; Ref</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in payments %}
+                <tr>
+                    <td>{{ p.payment_date|date:"d M Y H:i" }}</td>
+                    <td><a href="{% url 'wholesaler_order_detail' p.order.order_id %}">#{{ p.order.short_id }}</a></td>
+                    <td>{{ p.retailer.display_name }}</td>
+                    <td>{{ p.get_payment_method_display }} | {{ p.reference_number|default:"-" }}</td>
+                    <td><strong>&#8377;{{ p.amount }}</strong></td>
+                    <td><span class="pill {% if p.status == 'VERIFIED' %}pill-green{% elif p.status == 'PENDING' %}pill-amber{% else %}pill-red{% endif %}">{{ p.get_status_display }}</span></td>
+                    <td>
+                        {% if p.status == 'PENDING' %}
+                        <form method="post" class="inline-form">
+                            {% csrf_token %}
+                            <input type="hidden" name="payment_id" value="{{ p.payment_id }}">
+                            <button type="submit" name="decision" value="approve" class="btn btn-success btn-sm">Verify</button>
+                            <button type="submit" name="decision" value="reject" class="btn btn-danger btn-sm">Reject</button>
+                        </form>
+                        {% else %}-{% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="subtitle">No payments recorded yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

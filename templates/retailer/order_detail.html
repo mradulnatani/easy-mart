@@ -1,0 +1,228 @@
+{% extends 'base.html' %}
+{% block title %}Order #{{ order.short_id }} Tracking | Easy-Mart{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>{% if order.status == 'COMPLETED' or order.status == 'CANCELLED' %}View{% else %}Order{% endif %} #{{ order.short_id }}</h1>
+        <p class="subtitle">Wholesaler: <strong>{{ order.store.store_name }}</strong> | Placed {{ order.created_at|date:"d M Y H:i" }}</p>
+    </div>
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <a class="btn btn-secondary btn-sm" href="{% url 'order_invoice' order.order_id %}">Invoice</a>
+        <form method="post" style="display: inline;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="reorder">
+            <button type="submit" class="btn btn-primary btn-sm">One-Click Reorder</button>
+        </form>
+        {% if order.status == 'DELIVERED' or order.status == 'OUT_FOR_DELIVERY' %}
+        <form method="post" style="display: inline;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="confirm_delivery">
+            <button type="submit" class="btn btn-success btn-sm">Confirm Delivery Received</button>
+        </form>
+        {% endif %}
+        {% if order.status == 'PENDING' %}
+        <form method="post" style="display: inline;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="cancel_order">
+            <button type="submit" class="btn btn-danger btn-sm">Cancel Order</button>
+        </form>
+        {% endif %}
+        {% if order.status == 'COMPLETED' or order.status == 'CANCELLED' %}
+        <span class="pill">Read-Only</span>
+        {% endif %}
+    </div>
+</div>
+
+<div class="grid grid-2" style="margin-bottom: 1.25rem;">
+    <div class="card">
+        <h2>Delivery &amp; Live Shipment Details</h2>
+        <p>
+            <strong>Order Status:</strong> <span class="pill pill-blue">{{ order.get_status_display }}</span>
+            {% if order.retailer_confirmed_delivery %}
+                <span class="pill pill-green">Delivery Confirmed ({{ order.retailer_confirmed_at|date:"d M Y H:i" }})</span>
+            {% endif %}
+            <br>
+            <strong>Ship To:</strong> {{ order.delivery_address }}, {{ order.delivery_city }}, {{ order.delivery_state }} - {{ order.delivery_pincode }}
+        </p>
+        {% if order.status == 'DELIVERED' or order.status == 'OUT_FOR_DELIVERY' %}
+        <div class="alert alert-info" style="margin-bottom: 0.9rem;">
+            <strong>Goods Delivered?</strong> Please confirm delivery to mark this order as Completed.
+            <form method="post" style="margin-top: 0.5rem;">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="confirm_delivery">
+                <button type="submit" class="btn btn-success btn-sm">Confirm Delivery Received</button>
+            </form>
+        </div>
+        {% endif %}
+        <table>
+            <tbody>
+                <tr><th>Tracking / LR #</th><td>{{ order.shipment.tracking_number|default:"Not assigned yet" }}</td></tr>
+                <tr><th>Transport Company</th><td>{{ order.shipment.transport_company|default:"-" }}</td></tr>
+                <tr><th>Driver &amp; Phone</th><td>{{ order.shipment.driver_name|default:"-" }} {% if order.shipment.driver_phone %}({{ order.shipment.driver_phone }}){% endif %}</td></tr>
+                <tr><th>Vehicle Number</th><td>{{ order.shipment.vehicle_number|default:"-" }}</td></tr>
+                <tr><th>Current Location</th><td>{{ order.shipment.current_city|default:"-" }}{% if order.shipment.current_state %}, {{ order.shipment.current_state }}{% endif %}</td></tr>
+                <tr><th>Estimated Delivery</th><td>{{ order.shipment.estimated_delivery_date|default:"-" }}</td></tr>
+            </tbody>
+        </table>
+
+        <h3 style="margin-top: 1.25rem;">Order Status Timeline</h3>
+        <ul class="timeline">
+            {% for log in order.status_logs.all %}
+            <li>
+                <strong>{{ log.get_status_display }}</strong>
+                {% if log.location_city %}({{ log.location_city }}){% endif %}
+                <div class="subtitle">{{ log.remarks }} &middot; {{ log.created_at|date:"d M Y H:i" }}</div>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2>Payment Tracking &amp; Submit Proof</h2>
+        <p>
+            Status: <span class="pill {% if order.payment_status == 'PAID' %}pill-green{% elif order.payment_status == 'PARTIAL' %}pill-amber{% else %}pill-red{% endif %}">{{ order.get_payment_status_display }}</span>
+            {% if order.is_credit_order %}<span class="pill pill-blue">On Credit (Limit &#8377;{{ user.credit_limit }})</span>{% endif %}
+            <br>
+            Grand Total: <strong>&#8377;{{ order.grand_total }}</strong> |
+            Verified Paid: <strong>&#8377;{{ order.amount_paid }}</strong> |
+            Balance Due: <strong>&#8377;{{ order.balance_due }}</strong>
+            {% if order.payment_due_date %}<br><span class="subtitle">Due Date: {{ order.payment_due_date }} | Available Credit: &#8377;{{ user.available_credit }}</span>{% endif %}
+        </p>
+
+        <div class="table-wrap" style="margin-bottom: 1rem;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Amount</th>
+                        <th>Method / Ref</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in order.payments.all %}
+                    <tr>
+                        <td>{{ p.payment_date|date:"d M Y" }}</td>
+                        <td>&#8377;{{ p.amount }}</td>
+                        <td>{{ p.get_payment_method_display }} ({{ p.reference_number|default:"-" }})</td>
+                        <td><span class="pill {% if p.status == 'VERIFIED' %}pill-green{% elif p.status == 'PENDING' %}pill-amber{% else %}pill-red{% endif %}">{{ p.get_status_display }}</span></td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="subtitle">No payments submitted yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if not order.is_fully_paid and order.status != 'CANCELLED' and order.status != 'COMPLETED' %}
+        {% if order.is_credit_order %}
+        <div class="alert alert-info" style="margin-bottom: 1rem;">
+            <strong>Ordered on Credit (Pay Later)</strong><br>
+            No payment type or proof of payment is required right now. Your credit balance of
+            <strong>&#8377;{{ order.balance_due }}</strong> is due by <strong>{{ order.payment_due_date }}</strong>.
+        </div>
+        <details>
+            <summary class="btn btn-secondary btn-sm" style="cursor: pointer;">Settle Credit Balance Later</summary>
+            <div style="margin-top: 1rem;">
+        {% else %}
+        <div style="margin-bottom: 1rem; padding: 0.75rem; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;">
+            <strong>Don't wish to pay right now?</strong>
+            <p class="subtitle" style="margin: 0.25rem 0 0.5rem;">
+                Defer payment using your retailer credit limit (Available: &#8377;{{ user.available_credit }} of &#8377;{{ user.credit_limit }}).
+            </p>
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="use_credit">
+                <button type="submit" class="btn btn-secondary btn-sm">Pay Later on Credit (&#8377;{{ order.balance_due }})</button>
+            </form>
+        </div>
+
+        <h3>Submit Payment Details</h3>
+        {% endif %}
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="submit_payment">
+            <div class="grid grid-2">
+                <div class="form-group">
+                    <label>Amount Paid (&#8377;) *</label>
+                    <input type="number" step="0.01" name="amount" min="0.01" value="{{ order.balance_due }}" required>
+                </div>
+                <div class="form-group">
+                    <label>Payment Method</label>
+                    <select id="paymentMethodSelect" name="payment_method" onchange="toggleUpiProof()">
+                        {% for val, label in payment_methods %}
+                            <option value="{{ val }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>UTR / Transaction / Cheque Reference</label>
+                <input type="text" name="reference_number" placeholder="e.g., UPI123456789">
+            </div>
+            <div class="form-group" id="upiProofGroup">
+                <label>Upload UPI Payment Proof / Screenshot</label>
+                <input id="upiProofInput" type="file" name="proof_file" accept="image/*,.pdf">
+            </div>
+            <div class="form-group">
+                <label>Notes</label>
+                <input type="text" name="notes">
+            </div>
+            <button type="submit" class="btn btn-primary">Submit Payment</button>
+        </form>
+        <script>
+            function toggleUpiProof() {
+                var sel = document.getElementById('paymentMethodSelect');
+                var group = document.getElementById('upiProofGroup');
+                var fileInput = document.getElementById('upiProofInput');
+                if (!sel || !group) return;
+                if (sel.value === 'UPI') {
+                    group.style.display = 'block';
+                } else {
+                    group.style.display = 'none';
+                    if (fileInput) fileInput.value = '';
+                }
+            }
+            document.addEventListener('DOMContentLoaded', toggleUpiProof);
+            toggleUpiProof();
+        </script>
+        {% if order.is_credit_order %}
+            </div>
+        </details>
+        {% endif %}
+        {% endif %}
+        {% if order.status == 'COMPLETED' or order.status == 'CANCELLED' %}
+        <span class="pill">Read-Only</span>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <h2>Ordered Items</h2>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>SKU</th>
+                    <th>Product</th>
+                    <th>Qty</th>
+                    <th>Unit Price</th>
+                    <th>Line Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in order.items.all %}
+                <tr>
+                    <td>{{ item.product.sku }}</td>
+                    <td>{{ item.product.product_name }} ({{ item.product.capacity }})</td>
+                    <td>{{ item.quantity }} {{ item.product.get_unit_type_display }}</td>
+                    <td>&#8377;{{ item.price_at_purchase }}</td>
+                    <td>&#8377;{{ item.line_total }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

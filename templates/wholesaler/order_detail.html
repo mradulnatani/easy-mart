@@ -1,0 +1,241 @@
+{% extends 'base.html' %}
+{% block title %}Order #{{ order.short_id }} | Wholesaler{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>{% if order.status == 'COMPLETED' or order.status == 'CANCELLED' %}View{% else %}Manage{% endif %} Order #{{ order.short_id }}</h1>
+        <p class="subtitle">
+            Retailer: <strong>{{ order.customer.display_name }}</strong> ({{ order.contact_phone }}) |
+            Destination: {{ order.delivery_address }}, {{ order.delivery_city }}, {{ order.delivery_state }} - {{ order.delivery_pincode }}
+        </p>
+    </div>
+    <div style="display: flex; gap: 0.5rem;">
+        <a class="btn btn-secondary btn-sm" href="{% url 'order_invoice' order.order_id %}">View Invoice</a>
+        <a class="btn btn-secondary btn-sm" href="{% url 'wholesaler_orders' %}">All Orders</a>
+    </div>
+</div>
+
+<div class="grid grid-2" style="margin-bottom: 1.25rem;">
+    <div class="card">
+        <h2>{% if order.status == 'COMPLETED' or order.status == 'CANCELLED' %}Order Status{% else %}Update Order Status{% endif %}</h2>
+        <p>
+            Current Status: <span class="pill pill-blue">{{ order.get_status_display }}</span>
+            {% if order.retailer_confirmed_delivery %}
+                <span class="pill pill-green">Confirmed by Retailer ({{ order.retailer_confirmed_at|date:"d M Y H:i" }})</span>
+            {% elif order.status == 'DELIVERED' %}
+                <span class="pill pill-amber">Awaiting Retailer Confirmation</span>
+            {% endif %}
+        </p>
+        {% if order.status != 'COMPLETED' and order.status != 'CANCELLED' %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="update_status">
+            <div class="form-group">
+                <label>New Status</label>
+                <select name="status">
+                    {% for val, label in status_choices %}
+                        <option value="{{ val }}" {% if order.status == val %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Current Transit City</label>
+                <input type="text" name="location_city" value="{{ shipment.current_city }}" placeholder="e.g., Surat Hub">
+            </div>
+            <div class="form-group">
+                <label>Remarks (visible to retailer)</label>
+                <input type="text" name="remarks" placeholder="e.g., Dispatched via VRL Logistics">
+            </div>
+            <button type="submit" class="btn btn-primary">Update Status</button>
+        </form>
+        {% else %}
+        <p class="subtitle">This order is {{ order.get_status_display|lower }} and can no longer be modified.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Delivery &amp; Logistics Details</h2>
+        {% if order.status != 'COMPLETED' and order.status != 'CANCELLED' %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="update_shipment">
+            <div class="grid grid-2">
+                <div class="form-group">
+                    <label>Tracking / LR / Bilty Number</label>
+                    <input type="text" name="tracking_number" value="{{ shipment.tracking_number }}">
+                </div>
+                <div class="form-group">
+                    <label>Transport Company</label>
+                    <input type="text" name="transport_company" value="{{ shipment.transport_company }}">
+                </div>
+                <div class="form-group">
+                    <label>Driver Name</label>
+                    <input type="text" name="driver_name" value="{{ shipment.driver_name }}">
+                </div>
+                <div class="form-group">
+                    <label>Driver Phone</label>
+                    <input type="text" name="driver_phone" value="{{ shipment.driver_phone }}">
+                </div>
+                <div class="form-group">
+                    <label>Vehicle Number</label>
+                    <input type="text" name="vehicle_number" value="{{ shipment.vehicle_number }}">
+                </div>
+                <div class="form-group">
+                    <label>Estimated Delivery Date</label>
+                    <input type="date" name="estimated_delivery_date" value="{{ shipment.estimated_delivery_date|date:'Y-m-d' }}">
+                </div>
+                <div class="form-group">
+                    <label>Current City</label>
+                    <input type="text" name="current_city" value="{{ shipment.current_city }}">
+                </div>
+                <div class="form-group">
+                    <label>Current State</label>
+                    <input type="text" name="current_state" value="{{ shipment.current_state }}">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Delivery Notes</label>
+                <input type="text" name="delivery_notes" value="{{ shipment.delivery_notes }}">
+            </div>
+            <button type="submit" class="btn btn-secondary">Save Logistics Info</button>
+        </form>
+        {% else %}
+        <table>
+            <tbody>
+                <tr><th>Tracking / LR #</th><td>{{ shipment.tracking_number|default:"-" }}</td></tr>
+                <tr><th>Transport Company</th><td>{{ shipment.transport_company|default:"-" }}</td></tr>
+                <tr><th>Driver &amp; Phone</th><td>{{ shipment.driver_name|default:"-" }} {% if shipment.driver_phone %}({{ shipment.driver_phone }}){% endif %}</td></tr>
+                <tr><th>Vehicle Number</th><td>{{ shipment.vehicle_number|default:"-" }}</td></tr>
+                <tr><th>Location</th><td>{{ shipment.current_city|default:"-" }}{% if shipment.current_state %}, {{ shipment.current_state }}{% endif %}</td></tr>
+                <tr><th>Estimated Delivery</th><td>{{ shipment.estimated_delivery_date|default:"-" }}</td></tr>
+                <tr><th>Notes</th><td>{{ shipment.delivery_notes|default:"-" }}</td></tr>
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <h2>Order Items</h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Qty</th>
+                        <th>Rate</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in order.items.all %}
+                    <tr>
+                        <td>{{ item.product.product_name }} ({{ item.product.sku }})</td>
+                        <td>{{ item.quantity }} {{ item.product.get_unit_type_display }}</td>
+                        <td>&#8377;{{ item.price_at_purchase }}</td>
+                        <td>&#8377;{{ item.line_total }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p style="margin-top: 0.75rem;">
+            Subtotal: <strong>&#8377;{{ order.total_price }}</strong> |
+            Delivery: <strong>&#8377;{{ order.delivery_fee }}</strong> |
+            Grand Total: <strong>&#8377;{{ order.grand_total }}</strong>
+        </p>
+
+        <h3 style="margin-top: 1.25rem;">Status Timeline</h3>
+        <ul class="timeline">
+            {% for log in order.status_logs.all %}
+            <li>
+                <strong>{{ log.get_status_display }}</strong>
+                {% if log.location_city %}({{ log.location_city }}){% endif %}
+                <div class="subtitle">{{ log.remarks }} &middot; {{ log.created_at|date:"d M Y H:i" }}</div>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2>Payments &amp; Verification</h2>
+        <p>
+            Status: <span class="pill {% if order.payment_status == 'PAID' %}pill-green{% elif order.payment_status == 'PARTIAL' %}pill-amber{% else %}pill-red{% endif %}">{{ order.get_payment_status_display }}</span> |
+            Verified Paid: <strong>&#8377;{{ order.amount_paid }}</strong> |
+            Balance Due: <strong>&#8377;{{ order.balance_due }}</strong>
+        </p>
+
+        <div class="table-wrap" style="margin-bottom: 1rem;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Amount</th>
+                        <th>Method / Ref</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in order.payments.all %}
+                    <tr>
+                        <td>{{ p.payment_date|date:"d M Y" }}</td>
+                        <td>&#8377;{{ p.amount }}</td>
+                        <td>{{ p.get_payment_method_display }}<br><span class="subtitle">{{ p.reference_number|default:"-" }}</span></td>
+                        <td><span class="pill {% if p.status == 'VERIFIED' %}pill-green{% elif p.status == 'PENDING' %}pill-amber{% else %}pill-red{% endif %}">{{ p.get_status_display }}</span></td>
+                        <td>
+                            {% if p.status == 'PENDING' and order.status != 'COMPLETED' and order.status != 'CANCELLED' %}
+                            <form method="post" class="inline-form">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="verify_payment">
+                                <input type="hidden" name="payment_id" value="{{ p.payment_id }}">
+                                <button type="submit" name="decision" value="approve" class="btn btn-success btn-sm">Verify</button>
+                                <button type="submit" name="decision" value="reject" class="btn btn-danger btn-sm">Reject</button>
+                            </form>
+                            {% else %}-{% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5" class="subtitle">No payments recorded for this order yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if order.status != 'COMPLETED' and order.status != 'CANCELLED' %}
+        <h3>Record Received Payment (Cash / Cheque / Bank)</h3>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="record_payment">
+            <div class="grid grid-2">
+                <div class="form-group">
+                    <label>Amount (&#8377;) *</label>
+                    <input type="number" step="0.01" name="amount" min="0.01" value="{{ order.balance_due }}" required>
+                </div>
+                <div class="form-group">
+                    <label>Method</label>
+                    <select name="payment_method">
+                        {% for val, label in payment_methods %}
+                            <option value="{{ val }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Reference / Cheque / UTR Number</label>
+                <input type="text" name="reference_number">
+            </div>
+            <div class="form-group">
+                <label>Notes</label>
+                <input type="text" name="notes">
+            </div>
+            <button type="submit" class="btn btn-success">Record Verified Payment</button>
+        </form>
+        {% else %}
+        <p class="subtitle">Payments are locked (read-only) because this order is {{ order.get_status_display|lower }}.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

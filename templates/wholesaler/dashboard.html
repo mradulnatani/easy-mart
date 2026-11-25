@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% block title %}Wholesaler Dashboard | Easy-Mart{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Wholesaler Operations Dashboard</h1>
+        <p class="subtitle">Track inventory, multi-city orders, deliveries, and retailer dues.</p>
+    </div>
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <a class="btn btn-primary btn-sm" href="{% url 'wholesaler_stores' %}">Stores &amp; Shop QR</a>
+        <a class="btn btn-secondary btn-sm" href="{% url 'wholesaler_inventory' %}">Manage Stock</a>
+    </div>
+</div>
+
+<div class="grid grid-4" style="margin-bottom: 1.25rem;">
+    <div class="card stat-card">
+        <div class="stat-label">Registered Stores</div>
+        <div class="stat-value">{{ stores.count }}</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Pending / Packing Orders</div>
+        <div class="stat-value">{{ pending_orders_count }}</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Low Stock Alerts</div>
+        <div class="stat-value" style="color: {% if low_stock_count > 0 %}#dc2626{% else %}#15803d{% endif %};">{{ low_stock_count }}</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Total Receivables</div>
+        <div class="stat-value">&#8377;{{ total_receivable }}</div>
+        {% if pending_verifications > 0 %}
+            <span class="pill pill-amber">{{ pending_verifications }} payment proof(s) pending</span>
+        {% endif %}
+    </div>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <h2>Recent Retailer Orders</h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Order</th>
+                        <th>Retailer</th>
+                        <th>Destination</th>
+                        <th>Status</th>
+                        <th>Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for o in recent_orders %}
+                    <tr>
+                        <td><a href="{% url 'wholesaler_order_detail' o.order_id %}">#{{ o.short_id }}</a></td>
+                        <td>{{ o.customer.display_name }}</td>
+                        <td>{{ o.delivery_city }}, {{ o.delivery_state }}</td>
+                        <td><span class="pill pill-blue">{{ o.get_status_display }}</span></td>
+                        <td>&#8377;{{ o.balance_due }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5" class="subtitle">No orders yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Low Stock Alerts</h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Store</th>
+                        <th>Available</th>
+                        <th>Threshold</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in low_stock_items %}
+                    <tr>
+                        <td>{{ item.product_name }} ({{ item.sku }})</td>
+                        <td>{{ item.store.store_name }}</td>
+                        <td><span class="pill pill-red">{{ item.available_stock_count }}</span></td>
+                        <td>{{ item.low_stock_threshold }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="subtitle">All products are sufficiently stocked.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

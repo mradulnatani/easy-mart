@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}Shop QR Code | {{ store.store_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header no-print">
+    <div>
+        <h1>Digital Shop QR Code</h1>
+        <p class="subtitle">Retailers scanning this QR code are redirected directly to {{ store.store_name }}'s product catalog.</p>
+    </div>
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <a class="btn btn-primary" href="{% url 'wholesaler_store_qr_download' store.store_id %}?format=png">Download PNG</a>
+        <a class="btn btn-secondary" href="{% url 'wholesaler_store_qr_download' store.store_id %}?format=svg">Download SVG</a>
+        <button class="btn btn-secondary" onclick="window.print()">Print Poster</button>
+        <a class="btn btn-secondary" href="{% url 'wholesaler_stores' %}">Back to Stores</a>
+    </div>
+</div>
+
+<div class="qr-poster">
+    <span class="pill pill-blue">Easy-Mart Verified Wholesaler</span>
+    <h2 style="margin: 0.6rem 0 0.25rem;">{{ store.store_name }}</h2>
+    <p class="subtitle">{{ store.city }}{% if store.state %}, {{ store.state }}{% endif %} - {{ store.pin_code }}</p>
+
+    <div class="qr-box">
+        {{ qr_svg|safe }}
+    </div>
+
+    <p style="font-weight: 600; margin: 0.5rem 0 0.25rem;">Scan to Browse Live Stock &amp; Place Wholesale Orders</p>
+    <p style="font-size: 0.78rem; color: var(--muted); word-break: break-all;">{{ shop_url }}</p>
+</div>
+{% endblock %}

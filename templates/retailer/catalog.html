@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% block title %}Wholesale Catalog | Easy-Mart{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Browse Wholesale Products</h1>
+        <p class="subtitle">Filter by city, state, wholesaler shop, or category—no phone calls required.</p>
+    </div>
+    <a class="btn btn-primary btn-sm" href="{% url 'retailer_cart' %}">Go to Cart ({{ cart_item_count }})</a>
+</div>
+
+<div class="card" style="margin-bottom: 1.25rem;">
+    <form method="get" class="inline-form">
+        <input class="inline-input" style="flex: 1; min-width: 180px;" type="text" name="q" value="{{ q }}" placeholder="Search product, SKU, or brand...">
+        <input class="inline-input" type="text" name="city" value="{{ city }}" placeholder="Delivery City">
+        <input class="inline-input" type="text" name="state" value="{{ state }}" placeholder="Delivery State">
+        <select class="inline-input" name="store_id">
+            <option value="">All Wholesalers</option>
+            {% for s in stores %}
+                <option value="{{ s.store_id }}" {% if store_id == s.store_id|stringformat:'s' %}selected{% endif %}>{{ s.store_name }}</option>
+            {% endfor %}
+        </select>
+        <select class="inline-input" name="category">
+            <option value="">All Categories</option>
+            {% for cat in categories %}
+                <option value="{{ cat }}" {% if category == cat %}selected{% endif %}>{{ cat }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+    </form>
+</div>
+
+{% if recommendations %}
+<div style="margin-bottom: 1.5rem;">
+    <h2 style="margin: 0 0 0.75rem;">Recommended Based on Your Past Orders</h2>
+    <div class="grid grid-4">
+        {% for rec in recommendations %}
+        <div class="card" style="border-top: 3px solid #1d4ed8;">
+            <span class="pill pill-blue">{{ rec.reason }}</span>
+            <h3 style="margin: 0.45rem 0 0.2rem;">{{ rec.product.product_name }}</h3>
+            <p class="subtitle">{{ rec.product.store.store_name }} | &#8377;{{ rec.product.price }}/{{ rec.product.get_unit_type_display }}</p>
+            <form method="post" action="{% url 'add_to_cart' rec.product.id %}" class="inline-form" style="margin-top: 0.65rem;">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <input class="inline-input" type="number" name="quantity" min="{{ rec.product.min_order_quantity }}" max="{{ rec.product.available_stock_count }}" value="{{ rec.suggested_qty }}" style="width: 75px;">
+                <button type="submit" class="btn btn-primary btn-sm">Quick Add</button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="grid grid-3">
+    {% for product in products %}
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: start; gap: 0.5rem;">
+            <div>
+                <span class="pill">{{ product.category }}</span>
+                <h3 style="margin: 0.45rem 0 0.2rem;">{{ product.product_name }}</h3>
+                <p class="subtitle">
+                    Shop: <a href="{% url 'shop_products' product.store.store_id %}">{{ product.store.store_name }}</a><br>
+                    {{ product.company_name }} | {{ product.capacity }} | SKU: {{ product.sku }}
+                </p>
+            </div>
+            {% if product.available_stock_count > 0 %}
+                <span class="pill pill-green">Stock: {{ product.available_stock_count }}</span>
+            {% else %}
+                <span class="pill pill-red">Out of Stock</span>
+            {% endif %}
+        </div>
+
+        <div style="margin: 0.85rem 0; font-size: 1.1rem; font-weight: 700;">
+            &#8377;{{ product.price }} <span style="font-size: 0.82rem; font-weight: 400; color: var(--muted);">/ {{ product.get_unit_type_display }} (+{{ product.gst_rate }}% GST)</span>
+        </div>
+        <p class="subtitle" style="margin-bottom: 0.75rem;">MOQ: {{ product.min_order_quantity }} {{ product.get_unit_type_display }}</p>
+
+        {% if product.available_stock_count >= product.min_order_quantity %}
+        <form method="post" action="{% url 'add_to_cart' product.id %}" class="inline-form">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <input class="inline-input" type="number" name="quantity" min="{{ product.min_order_quantity }}" max="{{ product.available_stock_count }}" value="{{ product.min_order_quantity }}" style="width: 85px;">
+            <button type="submit" class="btn btn-primary btn-sm">Add to Cart</button>
+        </form>
+        {% endif %}
+    </div>
+    {% empty %}
+    <div class="card"><p class="subtitle">No products found matching your criteria.</p></div>
+    {% endfor %}
+</div>
+{% endblock %}

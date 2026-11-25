@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}Notifications | Easy-Mart{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Notifications &amp; New Product Alerts</h1>
+        <p class="subtitle">Stay updated when wholesalers you previously ordered from add new stock.</p>
+    </div>
+    {% if unread_notification_count %}
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="mark_all_read">
+        <button type="submit" class="btn btn-secondary btn-sm">Mark All as Read</button>
+    </form>
+    {% endif %}
+</div>
+
+<div class="grid">
+    {% for n in notifications %}
+    <div class="card" style="{% if not n.is_read %}border-left: 4px solid #1d4ed8;{% endif %}">
+        <div style="display: flex; justify-content: space-between; align-items: start; gap: 0.75rem; flex-wrap: wrap;">
+            <div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                    <strong>{{ n.title }}</strong>
+                    {% if not n.is_read %}<span class="pill pill-blue">New</span>{% endif %}
+                </div>
+                <p style="margin: 0.35rem 0;">{{ n.message }}</p>
+                <span class="subtitle">{{ n.created_at|date:"d M Y, H:i" }}</span>
+            </div>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                {% if n.link %}
+                    <a class="btn btn-primary btn-sm" href="{{ n.link }}">View Products</a>
+                {% endif %}
+                {% if not n.is_read %}
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="mark_read">
+                    <input type="hidden" name="notification_id" value="{{ n.id }}">
+                    <button type="submit" class="btn btn-secondary btn-sm">Mark Read</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="card">
+        <p class="subtitle">No notifications yet. When a wholesaler you have ordered from adds a new product, you'll be alerted here.</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,176 @@
+{% extends 'base.html' %}
+{% block title %}Inventory Management | Easy-Mart{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Inventory &amp; Stock Count Maintenance</h1>
+        <p class="subtitle">Every manual edit, CSV upload, and order deduction is automatically recorded in the Stock Audit Log.</p>
+    </div>
+    <div style="display: flex; gap: 0.5rem;">
+        <a class="btn btn-secondary btn-sm" href="{% url 'wholesaler_inventory_export' %}">Export CSV</a>
+        <a class="btn btn-secondary btn-sm" href="{% url 'wholesaler_audit_log' %}">View Audit Log</a>
+    </div>
+</div>
+
+<div class="grid grid-2" style="margin-bottom: 1.25rem;">
+    <div class="card">
+        <h2>Add New Product</h2>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add_product">
+            <div class="grid grid-2">
+                {% if stores.count > 1 %}
+                <div class="form-group">
+                    <label>Store *</label>
+                    <select name="store_id" required>
+                        {% for s in stores %}
+                            <option value="{{ s.store_id }}">{{ s.store_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <div class="form-group">
+                    <label>SKU (auto if blank)</label>
+                    <input type="text" name="sku" placeholder="e.g., RICE-25KG">
+                </div>
+                <div class="form-group">
+                    <label>Product Name *</label>
+                    <input type="text" name="product_name" required>
+                </div>
+                <div class="form-group">
+                    <label>Category *</label>
+                    <input type="text" name="category" placeholder="Groceries" required>
+                </div>
+                <div class="form-group">
+                    <label>Brand / Company *</label>
+                    <input type="text" name="company_name" required>
+                </div>
+                <div class="form-group">
+                    <label>Pack Size / Capacity *</label>
+                    <input type="text" name="capacity" placeholder="25kg Bag" required>
+                </div>
+                <div class="form-group">
+                    <label>Unit Type</label>
+                    <select name="unit_type">
+                        {% for val, label in unit_types %}
+                            <option value="{{ val }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Price per Unit (&#8377;) *</label>
+                    <input type="number" step="0.01" name="price" required>
+                </div>
+                <div class="form-group">
+                    <label>GST %</label>
+                    <input type="number" step="0.01" name="gst_rate" value="0.00">
+                </div>
+                <div class="form-group">
+                    <label>Available Stock *</label>
+                    <input type="number" name="available_stock_count" min="0" required>
+                </div>
+                <div class="form-group">
+                    <label>Min Order Qty</label>
+                    <input type="number" name="min_order_quantity" min="1" value="1">
+                </div>
+                <div class="form-group">
+                    <label>Low Stock Threshold</label>
+                    <input type="number" name="low_stock_threshold" min="0" value="10">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Add Product</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Bulk Upload / Update via Excel (.xlsx) or CSV</h2>
+        <p class="subtitle">
+            Upload an Excel sheet (<code>.xlsx</code>) or CSV (<code>.csv</code>) with columns:
+            <code>product_name, category, price, capacity, company_name, available_stock_count</code>
+            and optional <code>sku, unit_type, min_order_quantity, low_stock_threshold, gst_rate</code>.
+            Stock is automatically added to your wholesale shop, and existing SKUs are updated.
+        </p>
+        <form method="post" enctype="multipart/form-data" style="margin-top: 1rem;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="upload_spreadsheet">
+            <div class="form-group">
+                <label>Excel (.xlsx) or CSV File *</label>
+                <input type="file" name="file" accept=".csv,.xlsx" required>
+            </div>
+            <button type="submit" class="btn btn-secondary">Upload Stock Sheet</button>
+        </form>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom: 1rem;">
+    <form method="get" class="inline-form">
+        <input class="inline-input" style="flex: 1; min-width: 180px;" type="text" name="q" value="{{ q }}" placeholder="Search product, SKU, or brand...">
+        <select class="inline-input" name="store_id">
+            <option value="">All Stores</option>
+            {% for s in stores %}
+                <option value="{{ s.store_id }}" {% if store_filter == s.store_id|stringformat:'s' %}selected{% endif %}>{{ s.store_name }}</option>
+            {% endfor %}
+        </select>
+        <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.88rem;">
+            <input type="checkbox" name="low_only" value="1" {% if low_only %}checked{% endif %} style="width: auto;">
+            Low Stock Only
+        </label>
+        <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>SKU / Product</th>
+                    <th>Store</th>
+                    <th>Price</th>
+                    <th>Stock</th>
+                    <th>Quick Stock Adjustment</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in stocks %}
+                <tr>
+                    <td>
+                        <strong>{{ item.product_name }}</strong><br>
+                        <span class="subtitle">{{ item.sku }} | {{ item.company_name }} | {{ item.capacity }} | MOQ {{ item.min_order_quantity }} {{ item.get_unit_type_display }}</span>
+                    </td>
+                    <td>{{ item.store.store_name }}</td>
+                    <td>&#8377;{{ item.price }} (+{{ item.gst_rate }}%)</td>
+                    <td>
+                        {% if item.available_stock_count == 0 %}
+                            <span class="pill pill-red">Out (0)</span>
+                        {% elif item.is_low_stock %}
+                            <span class="pill pill-amber">Low ({{ item.available_stock_count }})</span>
+                        {% else %}
+                            <span class="pill pill-green">{{ item.available_stock_count }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <form method="post" class="inline-form">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="adjust_stock">
+                            <input type="hidden" name="product_id" value="{{ item.id }}">
+                            <input class="inline-input" type="number" name="new_quantity" min="0" value="{{ item.available_stock_count }}" style="width: 85px;">
+                            <select class="inline-input" name="reason">
+                                {% for val, label in audit_reasons %}
+                                    <option value="{{ val }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                            <input class="inline-input" type="text" name="notes" placeholder="Note (optional)" style="width: 120px;">
+                            <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="subtitle">No inventory items found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

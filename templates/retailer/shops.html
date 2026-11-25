@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block title %}Wholesale Shops | Easy-Mart{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Registered Wholesale Shops</h1>
+        <p class="subtitle">Browse all wholesalers, check serviceable cities/states, and view their live product catalogs.</p>
+    </div>
+    <a class="btn btn-secondary btn-sm" href="{% url 'retailer_catalog' %}">Search All Products</a>
+</div>
+
+<div class="card" style="margin-bottom: 1.25rem;">
+    <form method="get" class="inline-form">
+        <input class="inline-input" style="flex: 1; min-width: 200px;" type="text" name="q" value="{{ q }}" placeholder="Search shop or wholesaler name...">
+        <input class="inline-input" type="text" name="city" value="{{ city }}" placeholder="City">
+        <input class="inline-input" type="text" name="state" value="{{ state }}" placeholder="State">
+        <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+    </form>
+</div>
+
+<div class="grid grid-3">
+    {% for store in stores %}
+    <div class="card">
+        <h3 style="margin-bottom: 0.25rem;">{{ store.store_name }}</h3>
+        <p class="subtitle">
+            {{ store.store_address }}{% if store.city %}, {{ store.city }}{% endif %}{% if store.state %}, {{ store.state }}{% endif %} - {{ store.pin_code }}
+            {% if store.phone_number %}<br>Tel: {{ store.phone_number }}{% endif %}
+        </p>
+        <p style="margin: 0.6rem 0; font-size: 0.88rem;">
+            <strong>Products Listed:</strong> {{ store.stocks.count }}
+        </p>
+        {% if store.service_areas.all %}
+        <p style="font-size: 0.82rem; margin-bottom: 0.75rem;">
+            <strong>Delivers to:</strong>
+            {% for area in store.service_areas.all|slice:":5" %}
+                {% if area.is_active %}<span class="pill pill-blue">{{ area.city }}, {{ area.state }}</span>{% endif %}
+            {% endfor %}
+        </p>
+        {% endif %}
+        <a class="btn btn-primary btn-sm" href="{% url 'shop_products' store.store_id %}">Open Shop &amp; Products</a>
+    </div>
+    {% empty %}
+    <div class="card">
+        <p class="subtitle">No wholesale shops match your search.</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% block title %}My Payments &amp; Dues | Easy-Mart{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Payment Ledger &amp; Outstanding Dues</h1>
+        <p class="subtitle">Track every payment submitted and remaining balance per order.</p>
+    </div>
+</div>
+
+<div class="grid grid-4" style="margin-bottom: 1.25rem;">
+    <div class="card stat-card">
+        <div class="stat-label">Total Order Value</div>
+        <div class="stat-value">&#8377;{{ total_billed }}</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Verified Paid</div>
+        <div class="stat-value" style="color: #15803d;">&#8377;{{ total_paid }}</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Outstanding Balance</div>
+        <div class="stat-value" style="color: #dc2626;">&#8377;{{ total_due }}</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Available Credit</div>
+        <div class="stat-value" style="color: #0f766e;">&#8377;{{ user.available_credit }}</div>
+        <span class="subtitle">Used: &#8377;{{ user.credit_used }} / &#8377;{{ user.credit_limit }}</span>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom: 1.25rem;">
+    <h2>Order Balances</h2>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Order</th>
+                    <th>Wholesaler</th>
+                    <th>Due Date</th>
+                    <th>Grand Total</th>
+                    <th>Paid</th>
+                    <th>Balance</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for o in orders %}
+                <tr>
+                    <td><a href="{% url 'retailer_order_detail' o.order_id %}">#{{ o.short_id }}</a></td>
+                    <td>{{ o.store.store_name }}</td>
+                    <td>{{ o.payment_due_date|default:"-" }}</td>
+                    <td>&#8377;{{ o.grand_total }}</td>
+                    <td>&#8377;{{ o.amount_paid }}</td>
+                    <td><strong>&#8377;{{ o.balance_due }}</strong></td>
+                    <td>
+                        {% if o.status == 'COMPLETED' or o.status == 'CANCELLED' %}
+                            <a class="btn btn-secondary btn-sm" href="{% url 'retailer_order_detail' o.order_id %}">View</a>
+                        {% else %}
+                            <a class="btn btn-primary btn-sm" href="{% url 'retailer_order_detail' o.order_id %}">Pay / Details</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="subtitle">No active orders.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Payment History</h2>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Order</th>
+                    <th>Method</th>
+                    <th>Reference</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in payments %}
+                <tr>
+                    <td>{{ p.payment_date|date:"d M Y H:i" }}</td>
+                    <td><a href="{% url 'retailer_order_detail' p.order.order_id %}">#{{ p.order.short_id }}</a></td>
+                    <td>{{ p.get_payment_method_display }}</td>
+                    <td>{{ p.reference_number|default:"-" }}</td>
+                    <td>&#8377;{{ p.amount }}</td>
+                    <td><span class="pill {% if p.status == 'VERIFIED' %}pill-green{% elif p.status == 'PENDING' %}pill-amber{% else %}pill-red{% endif %}">{{ p.get_status_display }}</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="subtitle">No payments recorded yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

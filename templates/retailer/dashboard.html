@@ -1,0 +1,148 @@
+{% extends 'base.html' %}
+{% block title %}Retailer Dashboard | Easy-Mart{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Retailer Portal</h1>
+        <p class="subtitle">Place wholesale orders online, track shipments across cities, and view your payment dues.</p>
+    </div>
+    <div style="display: flex; gap: 0.5rem;">
+        <a class="btn btn-primary btn-sm" href="{% url 'retailer_catalog' %}">Browse Products</a>
+        <a class="btn btn-secondary btn-sm" href="{% url 'retailer_cart' %}">Cart ({{ cart_item_count }})</a>
+    </div>
+</div>
+
+<div class="grid grid-4" style="margin-bottom: 1.25rem;">
+    <div class="card stat-card">
+        <div class="stat-label">Total Orders Placed</div>
+        <div class="stat-value">{{ total_orders }}</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Orders In Transit</div>
+        <div class="stat-value">{{ in_transit_count }}</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Outstanding Balance</div>
+        <div class="stat-value">&#8377;{{ total_due }}</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Available Credit</div>
+        <div class="stat-value" style="color: #0f766e;">&#8377;{{ user.available_credit }}</div>
+        <span class="subtitle">Limit: &#8377;{{ user.credit_limit }}</span>
+    </div>
+</div>
+
+{% if unread_notifications %}
+<div class="card" style="margin-bottom: 1.25rem; border-left: 4px solid #1d4ed8;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+        <h2 style="margin: 0;">New Product Arrivals from Your Wholesalers</h2>
+        <a class="btn btn-secondary btn-sm" href="{% url 'notifications_page' %}">All Alerts</a>
+    </div>
+    {% for n in unread_notifications %}
+        <div style="padding: 0.45rem 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap;">
+            <span><strong>{{ n.title }}</strong> — {{ n.message }}</span>
+            {% if n.link %}<a class="btn btn-primary btn-sm" href="{{ n.link }}">View Shop</a>{% endif %}
+        </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="grid grid-2">
+    <div class="card">
+        <h2>Recent Orders &amp; Delivery Status</h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Order</th>
+                        <th>Wholesaler</th>
+                        <th>Status</th>
+                        <th>ETA / Tracking</th>
+                        <th>Due</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for o in recent_orders %}
+                    <tr>
+                        <td><a href="{% url 'retailer_order_detail' o.order_id %}">#{{ o.short_id }}</a></td>
+                        <td>{{ o.store.store_name }}</td>
+                        <td><span class="pill pill-blue">{{ o.get_status_display }}</span></td>
+                        <td>
+                            {% if o.shipment.tracking_number %}{{ o.shipment.tracking_number }}<br>{% endif %}
+                            <span class="subtitle">{{ o.shipment.estimated_delivery_date|default:"-" }}</span>
+                        </td>
+                        <td>&#8377;{{ o.balance_due }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5" class="subtitle">You have not placed any orders yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <h2 style="margin: 0;">Wholesaler Storefronts</h2>
+            <a class="btn btn-secondary btn-sm" href="{% url 'retailer_shops' %}">View All</a>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Shop</th>
+                        <th>Location</th>
+                        <th>Products</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in stores %}
+                    <tr>
+                        <td><strong>{{ s.store_name }}</strong></td>
+                        <td>{% if s.city or s.state %}{{ s.city }}{% if s.city and s.state %}, {% endif %}{{ s.state }}{% else %}{{ s.pin_code }}{% endif %}</td>
+                        <td>{{ s.stocks.count }}</td>
+                        <td><a class="btn btn-secondary btn-sm" href="{% url 'shop_products' s.store_id %}">Open Shop</a></td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="subtitle">No wholesale shops available yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if recommendations %}
+<div style="margin-top: 1.5rem;">
+    <div class="page-header" style="margin-bottom: 0.75rem;">
+        <div>
+            <h2 style="margin: 0;">Recommended for Your Shop</h2>
+            <p class="subtitle">Personalized suggestions based on your previous orders, categories, and popular items.</p>
+        </div>
+        <a class="btn btn-secondary btn-sm" href="{% url 'retailer_catalog' %}">Full Catalog</a>
+    </div>
+    <div class="grid grid-3">
+        {% for rec in recommendations %}
+        <div class="card">
+            <span class="pill pill-blue">{{ rec.reason }}</span>
+            <h3 style="margin: 0.5rem 0 0.2rem;">{{ rec.product.product_name }}</h3>
+            <p class="subtitle">
+                {{ rec.product.store.store_name }} | {{ rec.product.company_name }} | {{ rec.product.capacity }}
+            </p>
+            <p style="margin: 0.6rem 0; font-weight: 700;">
+                &#8377;{{ rec.product.price }} <span style="font-size: 0.82rem; font-weight: 400; color: var(--muted);">/ {{ rec.product.get_unit_type_display }}</span>
+            </p>
+            <form method="post" action="{% url 'add_to_cart' rec.product.id %}" class="inline-form">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{% url 'retailer_cart' %}">
+                <input class="inline-input" type="number" name="quantity" min="{{ rec.product.min_order_quantity }}" max="{{ rec.product.available_stock_count }}" value="{{ rec.suggested_qty }}" style="width: 80px;">
+                <button type="submit" class="btn btn-primary btn-sm">Add to Cart</button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}
