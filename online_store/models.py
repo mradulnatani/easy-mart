@@ -246,12 +246,28 @@ class Order(models.Model):
 
     @property
     def balance_due(self):
+        if self.status == self.OrderStatus.CANCELLED:
+            return Decimal('0.00')
         remaining = self.grand_total - self.amount_paid
         return remaining if remaining > Decimal('0.00') else Decimal('0.00')
 
     @property
     def is_fully_paid(self):
         return self.balance_due <= Decimal('0.00')
+
+    @property
+    def has_unsettled_credit(self):
+        return (
+            self.is_credit_order
+            and not self.is_fully_paid
+            and self.status != self.OrderStatus.CANCELLED
+        )
+
+    @property
+    def can_manage_payments(self):
+        return self.status != self.OrderStatus.CANCELLED and (
+            self.status != self.OrderStatus.COMPLETED or self.has_unsettled_credit
+        )
 
     @property
     def short_id(self):

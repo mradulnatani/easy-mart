@@ -1,49 +1,237 @@
 {% extends 'base.html' %}
-{% block title %}Easy-Mart | Wholesale B2B Platform{% endblock %}
+{% block title %}Easy-Mart | B2B Wholesale Ordering, Logistics & Credit Platform{% endblock %}
 
-{% block content %}
-<div class="card" style="margin-bottom: 1.5rem; background: linear-gradient(135deg, #0f172a, #1e3a8a); color: #fff;">
-    <h1 style="margin-top: 0;">Wholesale Ordering, Multi-City Delivery &amp; Ledger Management</h1>
-    <p style="max-width: 720px; color: #cbd5e1;">
-        Replace phone orders with direct B2B ordering, real-time stock tracking, multi-state shipment visibility,
-        payment reconciliation, and instant QR-code shop storefronts.
-    </p>
-    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem;">
-        <a class="btn btn-primary" href="{% url 'register_page' %}">Register as Retailer or Wholesaler</a>
-        <a class="btn btn-secondary" href="{% url 'login_page' %}">Sign In</a>
-    </div>
-</div>
+{% block full_width_top %}
+<section class="hero-full">
+    <div class="hero-inner">
+        <div class="hero-copy">
+            <div class="hero-pill">
+                <span class="dot"></span>
+                Multi-City &amp; Multi-State Wholesale Commerce
+            </div>
+            <h1>Wholesale ordering, live stock &amp; delivery tracking in one place.</h1>
+            <p class="hero-lead">
+                Stop taking orders over phone calls. Easy-Mart gives wholesalers digital QR storefronts,
+                Excel/CSV stock management, inter-city logistics tracking, and gives retailers &#8377;10,000
+                instant credit with real-time order visibility.
+            </p>
+            <div class="hero-cta-row">
+                <a class="btn btn-primary btn-lg" href="{% url 'register_page' %}">Create Free Account</a>
+                <a class="btn btn-secondary btn-lg" href="{% url 'login_page' %}">Sign In</a>
+            </div>
+            <div class="hero-role-links">
+                <a href="{% url 'register_page' %}?role=WHOLESALER">Register as Wholesaler &rarr;</a>
+                <span>|</span>
+                <a href="{% url 'register_page' %}?role=RETAILER">Register as Retailer &rarr;</a>
+            </div>
+        </div>
 
-<div class="page-header">
-    <div>
-        <h1>Registered Wholesale Shops</h1>
-        <p class="subtitle">Scan a wholesaler's QR code or open their storefront directly to view products.</p>
-    </div>
-</div>
-
-<div class="grid grid-3">
-    {% for store in stores %}
-    <div class="card">
-        <h3>{{ store.store_name }}</h3>
-        <p class="subtitle">
-            {{ store.store_address }}{% if store.city %}, {{ store.city }}{% endif %}{% if store.state %}, {{ store.state }}{% endif %} - {{ store.pin_code }}
-        </p>
-        {% if store.service_areas.all %}
-        <p style="font-size: 0.85rem; margin-top: 0.6rem;">
-            <strong>Delivers to:</strong>
-            {% for area in store.service_areas.all|slice:":5" %}
-                <span class="pill">{{ area.city }}, {{ area.state }}</span>
-            {% endfor %}
-        </p>
-        {% endif %}
-        <div style="margin-top: 1rem;">
-            <a class="btn btn-primary btn-sm" href="{% url 'shop_products' store.store_id %}">View Products</a>
+        <div class="hero-showcase">
+            <div class="showcase-card">
+                <div class="showcase-header">
+                    <div>
+                        <span class="showcase-kicker">LIVE PLATFORM SNAPSHOT</span>
+                        <h3>B2B Trade Command Center</h3>
+                    </div>
+                    <span class="pill pill-green">Active Network</span>
+                </div>
+                <div class="showcase-stats">
+                    <div class="showcase-stat">
+                        <strong>{{ total_stores }}</strong>
+                        <span>Wholesale Shops</span>
+                    </div>
+                    <div class="showcase-stat">
+                        <strong>{{ total_products }}</strong>
+                        <span>In-Stock SKUs</span>
+                    </div>
+                    <div class="showcase-stat">
+                        <strong>&#8377;10,000</strong>
+                        <span>Retailer Credit</span>
+                    </div>
+                    <div class="showcase-stat">
+                        <strong>{{ total_cities|default:"All" }}</strong>
+                        <span>Cities Covered</span>
+                    </div>
+                </div>
+                <div class="showcase-feed">
+                    <div class="feed-row">
+                        <span class="feed-dot blue"></span>
+                        <div>
+                            <strong>QR Shop Scan &rarr; Instant Catalog</strong>
+                            <span>Retailers scan wholesaler QR posters to browse stock &amp; MOQ</span>
+                        </div>
+                    </div>
+                    <div class="feed-row">
+                        <span class="feed-dot teal"></span>
+                        <div>
+                            <strong>Inter-City Shipment &amp; Delivery Confirm</strong>
+                            <span>LR/Bilty number, driver phone &amp; retailer receipt verification</span>
+                        </div>
+                    </div>
+                    <div class="feed-row">
+                        <span class="feed-dot amber"></span>
+                        <div>
+                            <strong>Smart Restock &amp; New Arrival Alerts</strong>
+                            <span>Auto-notifies past buyers when wholesalers add new products</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
-    {% empty %}
-    <div class="card">
-        <p class="subtitle">No wholesale shops registered yet. Register a Wholesaler account to create your digital shop and QR code.</p>
+</section>
+
+<div class="trust-strip">
+    <div class="trust-strip-inner">
+        <span><strong>Zero Phone Errors</strong> &middot; Direct digital cart &amp; MOQ validation</span>
+        <span><strong>Excel &amp; CSV Sync</strong> &middot; Bulk upload with audit logs</span>
+        <span><strong>UPI &amp; Credit Ledger</strong> &middot; &#8377;10,000 credit + UPI proof verification</span>
+        <span><strong>Mobile First</strong> &middot; Built for phones in warehouses &amp; retail shops</span>
     </div>
-    {% endfor %}
 </div>
+{% endblock %}
+
+{% block content %}
+<section id="features" class="landing-section">
+    <div class="section-header-left">
+        <span class="section-eyebrow">Platform Capabilities</span>
+        <h2>Designed for Real Wholesale Operations</h2>
+        <p class="subtitle">Every workflow replaces manual notebooks, phone follow-ups, and stock mismatches.</p>
+    </div>
+
+    <div class="grid grid-3">
+        <div class="card feature-card">
+            <div class="icon-badge blue">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            </div>
+            <h3>Self-Serve B2B Ordering</h3>
+            <p class="subtitle">Retailers browse live stock, unit types, GST rates, and city delivery fees 24/7 with one-click reorder.</p>
+        </div>
+
+        <div class="card feature-card">
+            <div class="icon-badge indigo">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM18 18h3v3h-3zM14 20h2M20 14v2"/></svg>
+            </div>
+            <h3>Scannable Shop QR Codes</h3>
+            <p class="subtitle">Download high-res PNG or SVG QR codes for your shop so buyers scan and open your live product list immediately.</p>
+        </div>
+
+        <div class="card feature-card">
+            <div class="icon-badge teal">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+            </div>
+            <h3>Excel &amp; CSV Stock Control</h3>
+            <p class="subtitle">Upload `.xlsx` or `.csv` inventory sheets anytime. Every deduction, restock, and cancellation is audited automatically.</p>
+        </div>
+
+        <div class="card feature-card">
+            <div class="icon-badge sky">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+            </div>
+            <h3>Multi-City Shipment Tracking</h3>
+            <p class="subtitle">Share LR/Bilty numbers, transporter, driver phone, and transit hub updates. Retailers confirm receipt to complete orders.</p>
+        </div>
+
+        <div class="card feature-card">
+            <div class="icon-badge emerald">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            </div>
+            <h3>&#8377;10,000 Credit &amp; UPI Ledger</h3>
+            <p class="subtitle">Retailers can buy on credit when needed or pay via UPI (with screenshot verification), NEFT, cheque, or cash.</p>
+        </div>
+
+        <div class="card feature-card">
+            <div class="icon-badge amber">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            </div>
+            <h3>Alerts &amp; Recommendations</h3>
+            <p class="subtitle">Previous buyers get notified when new stock arrives and receive tailored restock picks from past orders.</p>
+        </div>
+    </div>
+</section>
+
+<section id="how-it-works" class="landing-section">
+    <div class="section-header-left">
+        <span class="section-eyebrow">Two Dedicated Portals</span>
+        <h2>Built for Both Sides of Wholesale Trade</h2>
+    </div>
+
+    <div class="grid grid-2">
+        <div class="card workflow-card">
+            <div class="workflow-top">
+                <span class="pill pill-blue">Wholesalers &amp; Distributors</span>
+                <h3>Automate Orders, Stock &amp; Collections</h3>
+            </div>
+            <ol class="clean-steps">
+                <li><strong>Sign up &amp; get your QR shop</strong><span>Your digital storefront and downloadable PNG/SVG QR poster are ready immediately.</span></li>
+                <li><strong>Upload stock via Excel or CSV</strong><span>Manage prices, GST, MOQ, low-stock thresholds, and serviceable cities.</span></li>
+                <li><strong>Dispatch &amp; verify payments</strong><span>Enter driver/LR info, approve UPI proofs, and monitor retailer dues.</span></li>
+            </ol>
+            <a class="btn btn-primary" href="{% url 'register_page' %}?role=WHOLESALER">Join as Wholesaler</a>
+        </div>
+
+        <div class="card workflow-card">
+            <div class="workflow-top">
+                <span class="pill pill-green">Retailers &amp; Store Owners</span>
+                <h3>Order Faster with Instant Credit</h3>
+            </div>
+            <ol class="clean-steps">
+                <li><strong>Browse shops or scan QR</strong><span>Explore every wholesaler's live catalog and personalized recommendations.</span></li>
+                <li><strong>Order now or on &#8377;10,000 credit</strong><span>Split carts cleanly by wholesaler and defer payment using your credit line.</span></li>
+                <li><strong>Track delivery &amp; confirm</strong><span>Follow live transit details and confirm receipt once goods arrive.</span></li>
+            </ol>
+            <a class="btn btn-primary" href="{% url 'register_page' %}?role=RETAILER">Join as Retailer</a>
+        </div>
+    </div>
+</section>
+
+<section id="shops" class="landing-section">
+    <div class="page-header">
+        <div>
+            <span class="section-eyebrow">Live Directory</span>
+            <h2 style="margin: 0.2rem 0 0;">Registered Wholesale Shops</h2>
+            <p class="subtitle">Inspect active storefronts and product counts, or sign in to place wholesale orders.</p>
+        </div>
+        <a class="btn btn-secondary btn-sm" href="{% url 'register_page' %}">Register to Order</a>
+    </div>
+
+    <div class="grid grid-3">
+        {% for store in stores %}
+        <div class="card store-dir-card">
+            <div class="store-dir-head">
+                <div class="store-avatar">{{ store.store_name|slice:":2"|upper }}</div>
+                <div>
+                    <h3 style="margin: 0;">{{ store.store_name }}</h3>
+                    <span class="subtitle">
+                        {% if store.city or store.state %}{{ store.city }}{% if store.city and store.state %}, {% endif %}{{ store.state }}{% else %}PIN {{ store.pin_code }}{% endif %}
+                    </span>
+                </div>
+            </div>
+            <p class="subtitle" style="margin: 0.65rem 0;">{{ store.store_address }}</p>
+            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.9rem;">
+                <span class="pill pill-blue">{{ store.stocks.count }} Products</span>
+                {% for area in store.service_areas.all|slice:":3" %}
+                    {% if area.is_active %}<span class="pill">{{ area.city }}</span>{% endif %}
+                {% endfor %}
+            </div>
+            <a class="btn btn-secondary btn-sm" style="width: 100%;" href="{% url 'shop_products' store.store_id %}">View Shop Products &rarr;</a>
+        </div>
+        {% empty %}
+        <div class="card">
+            <p class="subtitle">No wholesale shops registered yet. Register a Wholesaler account to launch the first storefront.</p>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="cta-banner">
+    <div>
+        <h2>Ready to streamline your wholesale orders?</h2>
+        <p>Set up your Wholesaler or Retailer account in under 60 seconds.</p>
+    </div>
+    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+        <a class="btn btn-primary btn-lg" href="{% url 'register_page' %}">Get Started Free</a>
+        <a class="btn btn-secondary btn-lg" href="{% url 'login_page' %}">Sign In</a>
+    </div>
+</section>
 {% endblock %}

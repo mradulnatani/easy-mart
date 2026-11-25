@@ -54,7 +54,9 @@
                     <td>&#8377;{{ o.amount_paid }}</td>
                     <td><strong>&#8377;{{ o.balance_due }}</strong></td>
                     <td>
-                        {% if o.status == 'COMPLETED' or o.status == 'CANCELLED' %}
+                        {% if o.has_unsettled_credit %}
+                            <a class="btn btn-primary btn-sm" href="{% url 'retailer_order_detail' o.order_id %}">Settle Ledger</a>
+                        {% elif o.status == 'COMPLETED' or o.status == 'CANCELLED' %}
                             <a class="btn btn-secondary btn-sm" href="{% url 'retailer_order_detail' o.order_id %}">View</a>
                         {% else %}
                             <a class="btn btn-primary btn-sm" href="{% url 'retailer_order_detail' o.order_id %}">Pay / Details</a>

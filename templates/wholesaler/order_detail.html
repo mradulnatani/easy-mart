@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-header">
     <div>
-        <h1>{% if order.status == 'COMPLETED' or order.status == 'CANCELLED' %}View{% else %}Manage{% endif %} Order #{{ order.short_id }}</h1>
+        <h1>{% if order.status == 'CANCELLED' or order.status == 'COMPLETED' and not order.has_unsettled_credit %}View{% else %}Manage{% endif %} Order #{{ order.short_id }}</h1>
         <p class="subtitle">
             Retailer: <strong>{{ order.customer.display_name }}</strong> ({{ order.contact_phone }}) |
             Destination: {{ order.delivery_address }}, {{ order.delivery_city }}, {{ order.delivery_state }} - {{ order.delivery_pincode }}
@@ -186,7 +186,7 @@
                         <td>{{ p.get_payment_method_display }}<br><span class="subtitle">{{ p.reference_number|default:"-" }}</span></td>
                         <td><span class="pill {% if p.status == 'VERIFIED' %}pill-green{% elif p.status == 'PENDING' %}pill-amber{% else %}pill-red{% endif %}">{{ p.get_status_display }}</span></td>
                         <td>
-                            {% if p.status == 'PENDING' and order.status != 'COMPLETED' and order.status != 'CANCELLED' %}
+                            {% if p.status == 'PENDING' and order.can_manage_payments %}
                             <form method="post" class="inline-form">
                                 {% csrf_token %}
                                 <input type="hidden" name="action" value="verify_payment">
@@ -204,7 +204,7 @@
             </table>
         </div>
 
-        {% if order.status != 'COMPLETED' and order.status != 'CANCELLED' %}
+        {% if order.can_manage_payments %}
         <h3>Record Received Payment (Cash / Cheque / Bank)</h3>
         <form method="post">
             {% csrf_token %}

@@ -60,8 +60,24 @@ def home_view(request):
             return redirect('wholesaler_dashboard')
         return redirect('retailer_dashboard')
 
-    stores = StoreDetails.objects.prefetch_related('service_areas').order_by('-created_at')
-    return render(request, 'home.html', {'stores': stores})
+    stores = StoreDetails.objects.prefetch_related('service_areas', 'stocks').order_by('-created_at')
+    total_products = Stock.objects.filter(available_stock_count__gt=0).count()
+    total_cities = (
+        ServiceArea.objects.filter(is_active=True)
+        .values('city', 'state')
+        .distinct()
+        .count()
+    )
+    return render(
+        request,
+        'home.html',
+        {
+            'stores': stores,
+            'total_stores': stores.count(),
+            'total_products': total_products,
+            'total_cities': total_cities,
+        },
+    )
 
 
 def login_view(request):
@@ -140,7 +156,9 @@ def register_view(request):
         messages.success(request, 'Account created and authenticated via JWT.')
         return response
 
-    return render(request, 'auth/register.html', {'next': next_url, 'form_data': {}})
+    initial_role = request.GET.get('role', '').strip().upper()
+    form_data = {'role': initial_role} if initial_role in User.Roles.values else {}
+    return render(request, 'auth/register.html', {'next': next_url, 'form_data': form_data})
 
 
 def logout_view(request):
@@ -238,9 +256,8 @@ def wholesaler_dashboard(request):
     in_transit_orders = orders.filter(status__in=[Order.OrderStatus.SHIPPED, Order.OrderStatus.IN_TRANSIT, Order.OrderStatus.OUT_FOR_DELIVERY])
 
     active_orders = orders.exclude(status=Order.OrderStatus.CANCELLED)
-    total_billed = sum((o.grand_total for o in active_orders), Decimal('0.00'))
     total_collected = sum((o.amount_paid for o in active_orders), Decimal('0.00'))
-    total_receivable = total_billed - total_collected
+    total_receivable = sum((o.balance_due for o in active_orders), Decimal('0.00'))
 
     pending_verifications = payments.filter(status=Paymentdetails.VerificationStatus.PENDING).count()
 
@@ -254,6 +271,7 @@ def wholesaler_dashboard(request):
             'low_stock_items': low_stock_items,
             'pending_orders_count': pending_orders.count(),
             'in_transit_count': in_transit_orders.count(),
+            'total_collected': total_collected,
             'total_receivable': total_receivable,
             'pending_verifications': pending_verifications,
             'recent_orders': orders[:8],
@@ -559,10 +577,13 @@ def wholesaler_order_detail_view(request, order_id):
     shipment, _ = Shipment.objects.get_or_create(order=order)
 
     if request.method == 'POST':
-        if order.status in (Order.OrderStatus.COMPLETED, Order.OrderStatus.CANCELLED):
-            messages.error(request, 'Completed and cancelled orders are read-only.')
-            return redirect('wholesaler_order_detail', order_id=order.order_id)
         action = request.POST.get('action')
+        if order.status in (Order.OrderStatus.COMPLETED, Order.OrderStatus.CANCELLED):
+            if action in ('record_payment', 'verify_payment') and order.can_manage_payments:
+                pass
+            else:
+                messages.error(request, 'Completed and cancelled orders are read-only.')
+                return redirect('wholesaler_order_detail', order_id=order.order_id)
         if action == 'update_status':
             new_status = request.POST.get('status')
             remarks = request.POST.get('remarks', '').strip()
@@ -616,8 +637,11 @@ def wholesaler_order_detail_view(request, order_id):
         if action == 'verify_payment':
             payment = get_object_or_404(Paymentdetails, payment_id=request.POST.get('payment_id'), order=order)
             approved = request.POST.get('decision') == 'approve'
-            verify_payment(payment=payment, wholesaler=request.user, approved=approved)
-            messages.success(request, 'Payment verification updated.')
+            try:
+                verify_payment(payment=payment, wholesaler=request.user, approved=approved)
+                messages.success(request, 'Payment verification updated.')
+            except BusinessRuleError as exc:
+                messages.error(request, str(exc))
             return redirect('wholesaler_order_detail', order_id=order.order_id)
 
     wholesaler_status_choices = [
@@ -648,8 +672,11 @@ def wholesaler_payments_view(request):
             order__store__owner=request.user,
         )
         approved = request.POST.get('decision') == 'approve'
-        verify_payment(payment=payment, wholesaler=request.user, approved=approved)
-        messages.success(request, 'Payment status updated.')
+        try:
+            verify_payment(payment=payment, wholesaler=request.user, approved=approved)
+            messages.success(request, 'Payment status updated.')
+        except BusinessRuleError as exc:
+            messages.error(request, str(exc))
         return redirect('wholesaler_payments')
 
     payments = Paymentdetails.objects.filter(order__store__owner=request.user).select_related(
@@ -930,9 +957,14 @@ def retailer_order_detail_view(request, order_id):
 
     if request.method == 'POST':
         action = request.POST.get('action')
-        if order.status in (Order.OrderStatus.COMPLETED, Order.OrderStatus.CANCELLED) and action != 'reorder':
-            messages.error(request, 'Completed and cancelled orders are read-only.')
-            return redirect('retailer_order_detail', order_id=order.order_id)
+        if order.status in (Order.OrderStatus.COMPLETED, Order.OrderStatus.CANCELLED):
+            if action == 'reorder':
+                pass
+            elif action == 'submit_payment' and order.can_manage_payments:
+                pass
+            else:
+                messages.error(request, 'Completed and cancelled orders are read-only.')
+                return redirect('retailer_order_detail', order_id=order.order_id)
         if action == 'cancel_order':
             if order.status != Order.OrderStatus.PENDING:
                 messages.error(request, 'Only pending orders can be cancelled.')
@@ -1036,7 +1068,7 @@ def retailer_payments_view(request):
     orders = Order.objects.filter(customer=request.user).exclude(status=Order.OrderStatus.CANCELLED).select_related('store')
     total_billed = sum((o.grand_total for o in orders), Decimal('0.00'))
     total_paid = sum((o.amount_paid for o in orders), Decimal('0.00'))
-    total_due = total_billed - total_paid
+    total_due = sum((o.balance_due for o in orders), Decimal('0.00'))
     return render(
         request,
         'retailer/payments.html',

@@ -47,10 +47,21 @@
                         {{ o.shipment.tracking_number|default:"Pending" }}<br>
                         <span class="subtitle">{{ o.shipment.estimated_delivery_date|default:"-" }}</span>
                     </td>
-                    <td><span class="pill {% if o.payment_status == 'PAID' %}pill-green{% elif o.payment_status == 'PARTIAL' %}pill-amber{% else %}pill-red{% endif %}">{{ o.get_payment_status_display }}</span></td>
-                    <td>&#8377;{{ o.grand_total }}<br><span class="subtitle">Due: &#8377;{{ o.balance_due }}</span></td>
                     <td>
-                        {% if o.status == 'COMPLETED' or o.status == 'CANCELLED' %}
+                        {% if o.status == 'CANCELLED' %}
+                            <span class="pill">Cancelled</span>
+                        {% else %}
+                            <span class="pill {% if o.payment_status == 'PAID' %}pill-green{% elif o.payment_status == 'PARTIAL' %}pill-amber{% else %}pill-red{% endif %}">{{ o.get_payment_status_display }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        &#8377;{{ o.grand_total }}
+                        {% if o.status != 'CANCELLED' %}<br><span class="subtitle">Due: &#8377;{{ o.balance_due }}</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if o.has_unsettled_credit %}
+                            <a class="btn btn-primary btn-sm" href="{% url 'retailer_order_detail' o.order_id %}">Settle Ledger</a>
+                        {% elif o.status == 'COMPLETED' or o.status == 'CANCELLED' %}
                             <a class="btn btn-secondary btn-sm" href="{% url 'retailer_order_detail' o.order_id %}">View</a>
                         {% else %}
                             <a class="btn btn-primary btn-sm" href="{% url 'retailer_order_detail' o.order_id %}">Track &amp; Pay</a>

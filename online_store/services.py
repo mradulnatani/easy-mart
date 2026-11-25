@@ -729,6 +729,14 @@ def record_payment(
     if amount <= Decimal('0.00'):
         raise BusinessRuleError('Payment amount must be greater than zero.')
 
+    locked_order = Order.objects.select_for_update().get(pk=order.pk)
+    if locked_order.status == Order.OrderStatus.CANCELLED:
+        raise BusinessRuleError('Cannot record payment on a cancelled order.')
+    if amount > locked_order.balance_due:
+        raise BusinessRuleError(
+            f'Payment amount ₹{amount} exceeds remaining balance due ₹{locked_order.balance_due}.'
+        )
+
     # Payment proof screenshot is only accepted/stored for UPI payments
     if payment_method != Paymentdetails.PaymentMethod.UPI:
         proof_file = None
@@ -758,6 +766,14 @@ def record_payment(
 @transaction.atomic
 def verify_payment(*, payment: Paymentdetails, wholesaler, approved: bool) -> Paymentdetails:
     payment = Paymentdetails.objects.select_for_update().get(pk=payment.pk)
+    if payment.status == Paymentdetails.VerificationStatus.VERIFIED and approved:
+        return payment
+    if approved:
+        locked_order = Order.objects.select_for_update().get(pk=payment.order_id)
+        if payment.amount > locked_order.balance_due:
+            raise BusinessRuleError(
+                f'Cannot verify ₹{payment.amount}: exceeds remaining balance due ₹{locked_order.balance_due}.'
+            )
     payment.status = (
         Paymentdetails.VerificationStatus.VERIFIED
         if approved

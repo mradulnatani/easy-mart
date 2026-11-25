@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-header">
     <div>
-        <h1>{% if order.status == 'COMPLETED' or order.status == 'CANCELLED' %}View{% else %}Order{% endif %} #{{ order.short_id }}</h1>
+        <h1>{% if order.status == 'CANCELLED' or order.status == 'COMPLETED' and not order.has_unsettled_credit %}View{% else %}Order{% endif %} #{{ order.short_id }}</h1>
         <p class="subtitle">Wholesaler: <strong>{{ order.store.store_name }}</strong> | Placed {{ order.created_at|date:"d M Y H:i" }}</p>
     </div>
     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
@@ -28,7 +28,7 @@
             <button type="submit" class="btn btn-danger btn-sm">Cancel Order</button>
         </form>
         {% endif %}
-        {% if order.status == 'COMPLETED' or order.status == 'CANCELLED' %}
+        {% if not order.can_manage_payments %}
         <span class="pill">Read-Only</span>
         {% endif %}
     </div>
@@ -86,7 +86,7 @@
             <br>
             Grand Total: <strong>&#8377;{{ order.grand_total }}</strong> |
             Verified Paid: <strong>&#8377;{{ order.amount_paid }}</strong> |
-            Balance Due: <strong>&#8377;{{ order.balance_due }}</strong>
+            Balance Due: <strong>&#8377;{{ order.balance_due }}</strong>{% if order.status == 'CANCELLED' %} <span class="subtitle">(Cancelled &mdash; No Due)</span>{% endif %}
             {% if order.payment_due_date %}<br><span class="subtitle">Due Date: {{ order.payment_due_date }} | Available Credit: &#8377;{{ user.available_credit }}</span>{% endif %}
         </p>
 
@@ -115,7 +115,7 @@
             </table>
         </div>
 
-        {% if not order.is_fully_paid and order.status != 'CANCELLED' and order.status != 'COMPLETED' %}
+        {% if order.can_manage_payments and not order.is_fully_paid %}
         {% if order.is_credit_order %}
         <div class="alert alert-info" style="margin-bottom: 1rem;">
             <strong>Ordered on Credit (Pay Later)</strong><br>
@@ -123,7 +123,7 @@
             <strong>&#8377;{{ order.balance_due }}</strong> is due by <strong>{{ order.payment_due_date }}</strong>.
         </div>
         <details>
-            <summary class="btn btn-secondary btn-sm" style="cursor: pointer;">Settle Credit Balance Later</summary>
+            <summary class="btn btn-primary btn-sm" style="cursor: pointer;">Settle Ledger</summary>
             <div style="margin-top: 1rem;">
         {% else %}
         <div style="margin-bottom: 1rem; padding: 0.75rem; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;">
@@ -192,7 +192,7 @@
         </details>
         {% endif %}
         {% endif %}
-        {% if order.status == 'COMPLETED' or order.status == 'CANCELLED' %}
+        {% if not order.can_manage_payments %}
         <span class="pill">Read-Only</span>
         {% endif %}
     </div>

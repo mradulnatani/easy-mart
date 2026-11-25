@@ -476,21 +476,53 @@ class EasyMartEndToEndTests(TestCase):
         self.assertTrue(order.retailer_confirmed_delivery)
         self.assertIsNotNone(order.retailer_confirmed_at)
 
-        # Wholesaler orders table shows "View" (not "Manage") for COMPLETED/CANCELLED orders
+        # Credit-based COMPLETED order with unsettled balance:
+        # Retailer still sees "Settle Ledger" and Wholesaler still sees "Manage" (for payments only)
+        r_orders = self.client.get(reverse('retailer_orders'))
+        self.assertContains(r_orders, '>Settle Ledger<')
+        r_detail = self.client.get(reverse('retailer_order_detail', kwargs={'order_id': order.order_id}))
+        self.assertContains(r_detail, 'Settle Ledger')
+
         self.client.get(reverse('logout_page'))
         self.client.post(
             reverse('login_page'),
             {'username': 'wholesaler1', 'password': 'StrongPassword123!'},
         )
         w_orders = self.client.get(reverse('wholesaler_orders'))
-        self.assertContains(w_orders, '>View<')
-        self.assertNotContains(w_orders, '>Manage<')
+        self.assertContains(w_orders, '>Manage<')
         w_detail = self.client.get(reverse('wholesaler_order_detail', kwargs={'order_id': order.order_id}))
-        self.assertContains(w_detail, f'View Order #{order.short_id}')
-        self.assertNotContains(w_detail, 'Update Status')
-        self.assertNotContains(w_detail, 'Record Verified Payment')
+        self.assertContains(w_detail, f'Manage Order #{order.short_id}')
+        self.assertNotContains(w_detail, 'Update Status')  # status & logistics stay locked
+        self.assertContains(w_detail, 'Record Verified Payment')
 
-        # Attempting to modify a COMPLETED order via POST is blocked
+        # Attempting to overpay beyond remaining balance is rejected
+        overpay_resp = self.client.post(
+            reverse('wholesaler_order_detail', kwargs={'order_id': order.order_id}),
+            {'action': 'record_payment', 'amount': str(order.balance_due + Decimal('500.00')), 'payment_method': 'CASH'},
+            follow=True,
+        )
+        self.assertContains(overpay_resp, 'exceeds remaining balance due')
+
+        # Wholesaler settles full remaining balance on the credit order -> now becomes strictly read-only ("View")
+        self.client.post(
+            reverse('wholesaler_order_detail', kwargs={'order_id': order.order_id}),
+            {'action': 'record_payment', 'amount': str(order.balance_due), 'payment_method': 'CASH'},
+        )
+        order.refresh_from_db()
+        self.assertTrue(order.is_fully_paid)
+
+        w_dash = self.client.get(reverse('wholesaler_dashboard'))
+        self.assertContains(w_dash, 'Total Amount Received')
+        self.assertContains(w_dash, f'&#8377;{order.grand_total}')
+        self.assertContains(w_dash, 'Pending Receivables: <strong>&#8377;0.00</strong>')
+
+        w_orders_settled = self.client.get(reverse('wholesaler_orders'))
+        self.assertContains(w_orders_settled, '>View<')
+        self.assertNotContains(w_orders_settled, '>Manage<')
+        w_detail_settled = self.client.get(reverse('wholesaler_order_detail', kwargs={'order_id': order.order_id}))
+        self.assertContains(w_detail_settled, f'View Order #{order.short_id}')
+        self.assertNotContains(w_detail_settled, 'Record Verified Payment')
+
         blocked_post = self.client.post(
             reverse('wholesaler_order_detail', kwargs={'order_id': order.order_id}),
             {'action': 'record_payment', 'amount': '100.00', 'payment_method': 'CASH'},
@@ -498,18 +530,17 @@ class EasyMartEndToEndTests(TestCase):
         )
         self.assertContains(blocked_post, 'Completed and cancelled orders are read-only')
 
-        # Retailer orders table also shows "View" and read-only detail for COMPLETED orders
         self.client.get(reverse('logout_page'))
         self.client.post(
             reverse('login_page'),
             {'username': 'retailer1', 'password': 'StrongPassword123!'},
         )
-        r_orders = self.client.get(reverse('retailer_orders'))
-        self.assertContains(r_orders, '>View<')
-        self.assertNotContains(r_orders, '>Track &amp; Pay<')
-        r_detail = self.client.get(reverse('retailer_order_detail', kwargs={'order_id': order.order_id}))
-        self.assertContains(r_detail, f'View #{order.short_id}')
-        self.assertNotContains(r_detail, 'Settle Credit Balance Later')
+        r_orders_settled = self.client.get(reverse('retailer_orders'))
+        self.assertContains(r_orders_settled, '>View<')
+        self.assertNotContains(r_orders_settled, '>Settle Ledger<')
+        r_detail_settled = self.client.get(reverse('retailer_order_detail', kwargs={'order_id': order.order_id}))
+        self.assertContains(r_detail_settled, f'View #{order.short_id}')
+        self.assertNotContains(r_detail_settled, 'Settle Ledger')
 
     def test_retailer_recommendation_algorithm(self):
         # Add another Groceries item from same wholesaler and an unrelated Beverages item
@@ -562,6 +593,24 @@ class EasyMartEndToEndTests(TestCase):
         dash = self.client.get(reverse('retailer_dashboard'))
         self.assertContains(dash, 'Recommended for Your Shop')
         self.assertContains(dash, 'Desi Jaggery')
+
+    def test_landing_page_for_new_visitors(self):
+        # Root URL redirects to /store/ landing page with login & register CTAs
+        root = self.client.get('/')
+        self.assertEqual(root.status_code, 302)
+
+        landing = self.client.get(reverse('home'))
+        self.assertEqual(landing.status_code, 200)
+        self.assertContains(landing, 'Create Free Account')
+        self.assertContains(landing, 'Sign In')
+        self.assertContains(landing, reverse('login_page'))
+        self.assertContains(landing, reverse('register_page'))
+        self.assertContains(landing, self.store.store_name)
+
+        # ?role=WHOLESALER pre-selects Wholesaler on the registration page
+        reg_w = self.client.get(reverse('register_page') + '?role=WHOLESALER')
+        self.assertEqual(reg_w.status_code, 200)
+        self.assertContains(reg_w, 'value="WHOLESALER" selected')
 
     def test_retailer_order_delivery_payment_and_cancellation_flow(self):
         # Retailer logs in via JWT cookies
@@ -689,3 +738,14 @@ class EasyMartEndToEndTests(TestCase):
         self.assertEqual(cancel_resp.status_code, status.HTTP_200_OK)
         self.stock.refresh_from_db()
         self.assertEqual(self.stock.available_stock_count, 17)
+        cancelled_order = Order.objects.get(order_id=new_order_uuid)
+        self.assertEqual(cancelled_order.balance_due, Decimal('0.00'))
+
+        # Cancelled order shows no outstanding due on retailer views
+        self.client.post(
+            reverse('login_page'),
+            {'username': 'retailer1', 'password': 'StrongPassword123!'},
+        )
+        r_cancelled_detail = self.client.get(reverse('retailer_order_detail', kwargs={'order_id': new_order_uuid}))
+        self.assertContains(r_cancelled_detail, 'Balance Due: <strong>&#8377;0.00</strong>')
+        self.assertContains(r_cancelled_detail, 'No Due')

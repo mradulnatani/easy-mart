@@ -380,7 +380,7 @@ class PaymentListCreateAPIView(APIView):
 
         if request.user != order.customer and request.user != order.store.owner:
             return Response({'error': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
-        if order.status in (Order.OrderStatus.COMPLETED, Order.OrderStatus.CANCELLED):
+        if not order.can_manage_payments:
             return Response(
                 {'error': 'Completed and cancelled orders are read-only.'},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -411,13 +411,16 @@ class PaymentVerifyAPIView(APIView):
 
     def post(self, request, payment_id):
         payment = get_object_or_404(Paymentdetails, payment_id=payment_id, order__store__owner=request.user)
-        if payment.order.status in (Order.OrderStatus.COMPLETED, Order.OrderStatus.CANCELLED):
+        if not payment.order.can_manage_payments:
             return Response(
                 {'error': 'Completed and cancelled orders are read-only.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         approved = str(request.data.get('approved', 'true')).lower() in ('true', '1', 'yes')
-        updated = verify_payment(payment=payment, wholesaler=request.user, approved=approved)
+        try:
+            updated = verify_payment(payment=payment, wholesaler=request.user, approved=approved)
+        except BusinessRuleError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(PaymentSerializer(updated).data)
 
 

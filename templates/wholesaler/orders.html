@@ -54,7 +54,7 @@
                     <td><span class="pill {% if o.payment_status == 'PAID' %}pill-green{% elif o.payment_status == 'PARTIAL' %}pill-amber{% else %}pill-red{% endif %}">{{ o.get_payment_status_display }}</span></td>
                     <td>&#8377;{{ o.grand_total }}<br><span class="subtitle">Due: &#8377;{{ o.balance_due }}</span></td>
                     <td>
-                        {% if o.status == 'COMPLETED' or o.status == 'CANCELLED' %}
+                        {% if o.status == 'CANCELLED' or o.status == 'COMPLETED' and not o.has_unsettled_credit %}
                             <a class="btn btn-secondary btn-sm" href="{% url 'wholesaler_order_detail' o.order_id %}">View</a>
                         {% else %}
                             <a class="btn btn-primary btn-sm" href="{% url 'wholesaler_order_detail' o.order_id %}">Manage</a>

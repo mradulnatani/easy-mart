@@ -27,8 +27,9 @@
         <div class="stat-value" style="color: {% if low_stock_count > 0 %}#dc2626{% else %}#15803d{% endif %};">{{ low_stock_count }}</div>
     </div>
     <div class="card stat-card">
-        <div class="stat-label">Total Receivables</div>
-        <div class="stat-value">&#8377;{{ total_receivable }}</div>
+        <div class="stat-label">Total Amount Received</div>
+        <div class="stat-value" style="color: #15803d;">&#8377;{{ total_collected }}</div>
+        <div class="subtitle">Pending Receivables: <strong>&#8377;{{ total_receivable }}</strong></div>
         {% if pending_verifications > 0 %}
             <span class="pill pill-amber">{{ pending_verifications }} payment proof(s) pending</span>
         {% endif %}
