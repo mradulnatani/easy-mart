@@ -13,7 +13,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 from datetime import timedelta
 import os
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
@@ -219,7 +219,12 @@ WSGI_APPLICATION = 'easy_mart.wsgi.application'
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
 DB_ENGINE = os.getenv('DB_ENGINE', '').strip()
-DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
+DATABASE_URL = (
+    os.getenv('DATABASE_URL', '').strip()
+    or os.getenv('POSTGRES_URL', '').strip()
+    or os.getenv('POSTGRES_PRISMA_URL', '').strip()
+)
+_PG_HOST = os.getenv('DB_HOST', '').strip() or os.getenv('POSTGRES_HOST', '').strip()
 
 if DB_ENGINE == 'django.db.backends.sqlite3':
     DATABASES = {
@@ -231,29 +236,35 @@ if DB_ENGINE == 'django.db.backends.sqlite3':
 elif DATABASE_URL and DATABASE_URL.startswith(('postgres://', 'postgresql://')):
     _parsed = urlparse(DATABASE_URL)
     _query = parse_qs(_parsed.query)
-    _options = {k: v[0] for k, v in _query.items() if v}
+    _options = {k: v[0] for k, v in _query.items() if v and k not in ('pgbouncer', 'supa')}
     DATABASES = {
         'default': {
             'ENGINE': DB_ENGINE or 'django.db.backends.postgresql',
-            'NAME': _parsed.path.lstrip('/') or os.getenv('DB_NAME', 'easy_mart'),
-            'USER': _parsed.username or os.getenv('DB_USER', 'postgres'),
-            'PASSWORD': _parsed.password or os.getenv('DB_PASSWORD', ''),
-            'HOST': _parsed.hostname or os.getenv('DB_HOST', 'localhost'),
-            'PORT': str(_parsed.port or os.getenv('DB_PORT', '5432')),
-            'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '60')),
+            'NAME': _parsed.path.lstrip('/') or os.getenv('DB_NAME') or os.getenv('POSTGRES_DATABASE', 'easy_mart'),
+            'USER': unquote(_parsed.username) if _parsed.username else (os.getenv('DB_USER') or os.getenv('POSTGRES_USER', 'postgres')),
+            'PASSWORD': unquote(_parsed.password) if _parsed.password else (os.getenv('DB_PASSWORD') or os.getenv('POSTGRES_PASSWORD', '')),
+            'HOST': _parsed.hostname or _PG_HOST or 'localhost',
+            'PORT': str(_parsed.port or os.getenv('DB_PORT') or os.getenv('POSTGRES_PORT', '5432')),
+            'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '0' if os.getenv('VERCEL') else '60')),
             'CONN_HEALTH_CHECKS': True,
             **({'OPTIONS': _options} if _options else {}),
         }
     }
+elif os.getenv('VERCEL') and not _PG_HOST:
+    raise ImproperlyConfigured(
+        'No remote PostgreSQL database is configured on Vercel. '
+        'Add DATABASE_URL (or Vercel Postgres/Neon POSTGRES_URL) in Vercel Project Settings -> Environment Variables, '
+        'then run `python manage.py migrate` against that database.'
+    )
 else:
     DATABASES = {
         'default': {
             'ENGINE': DB_ENGINE or 'django.db.backends.postgresql',
-            'NAME': os.getenv('DB_NAME', 'easy_mart'),
-            'USER': os.getenv('DB_USER', 'postgres'),
-            'PASSWORD': os.getenv('DB_PASSWORD', ''),
-            'HOST': os.getenv('DB_HOST', 'localhost'),
-            'PORT': os.getenv('DB_PORT', '5432'),
+            'NAME': os.getenv('DB_NAME') or os.getenv('POSTGRES_DATABASE', 'easy_mart'),
+            'USER': os.getenv('DB_USER') or os.getenv('POSTGRES_USER', 'postgres'),
+            'PASSWORD': os.getenv('DB_PASSWORD') or os.getenv('POSTGRES_PASSWORD', ''),
+            'HOST': _PG_HOST or 'localhost',
+            'PORT': os.getenv('DB_PORT') or os.getenv('POSTGRES_PORT', '5432'),
             'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '60')),
             'CONN_HEALTH_CHECKS': True,
         }
