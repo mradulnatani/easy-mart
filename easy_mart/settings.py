@@ -237,6 +237,7 @@ elif DATABASE_URL and DATABASE_URL.startswith(('postgres://', 'postgresql://')):
     _parsed = urlparse(DATABASE_URL)
     _query = parse_qs(_parsed.query)
     _options = {k: v[0] for k, v in _query.items() if v and k not in ('pgbouncer', 'supa')}
+    _is_pooler = ('pgbouncer' in _query) or ('supa' in _query) or (_parsed.port == 6543)
     DATABASES = {
         'default': {
             'ENGINE': DB_ENGINE or 'django.db.backends.postgresql',
@@ -245,8 +246,9 @@ elif DATABASE_URL and DATABASE_URL.startswith(('postgres://', 'postgresql://')):
             'PASSWORD': unquote(_parsed.password) if _parsed.password else (os.getenv('DB_PASSWORD') or os.getenv('POSTGRES_PASSWORD', '')),
             'HOST': _parsed.hostname or _PG_HOST or 'localhost',
             'PORT': str(_parsed.port or os.getenv('DB_PORT') or os.getenv('POSTGRES_PORT', '5432')),
-            'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '0' if os.getenv('VERCEL') else '60')),
+            'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '0' if (os.getenv('VERCEL') or _is_pooler) else '60')),
             'CONN_HEALTH_CHECKS': True,
+            **({'DISABLE_SERVER_SIDE_CURSORS': True} if _is_pooler else {}),
             **({'OPTIONS': _options} if _options else {}),
         }
     }
